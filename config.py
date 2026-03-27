@@ -3,7 +3,7 @@ config.py — Central Configuration for MNQ 14:50 Strategy
 """
 
 # ── CSV Data ────────────────────────────────────────────────────────────────
-CSV_PATH = "data.csv"          # override with --csv flag
+CSV_PATH = "data/data.csv"     # place your CSV here; override with --csv flag
 
 # ── Capital & Instrument ─────────────────────────────────────────────────────
 INITIAL_CAPITAL = 10_000       # dollars

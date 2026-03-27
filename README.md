@@ -33,6 +33,7 @@ The strategy trades the **14:50 ET candle** on MNQ:
 
 ```
 mnq-1450-strategy/
+├── data/                     # ← place your CSV file here (e.g. data/data.csv)
 ├── config.py                 # Central configuration
 ├── core_strategy.py          # Main backtester
 ├── advanced_validation.py    # Statistical validation suite
@@ -42,6 +43,53 @@ mnq-1450-strategy/
 ├── requirements.txt          # Python dependencies
 └── README.md                 # This file
 ```
+
+---
+
+## Quick Start
+
+### 1. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+Requires **Python 3.8+** with pandas, numpy, matplotlib, scipy, and scikit-learn.
+
+### 2. Place your historical data file
+
+Copy your 1-minute bar CSV file into the **`data/`** folder and name it **`data.csv`**:
+
+```
+mnq-1450-strategy/
+└── data/
+    └── data.csv   ← put your file here
+```
+
+The default path is `data/data.csv` (set in `config.py`).
+If you prefer a different location, pass it with `--csv`:
+
+```bash
+python run_all.py --csv /path/to/your/file.csv
+```
+
+### 3. Run the system
+
+```bash
+# Run all modules using data/data.csv (default)
+python run_all.py
+
+# Run all modules with a custom path
+python run_all.py --csv /path/to/your/mnq_1min.csv
+
+# Run a specific module only
+python run_all.py --module core          # core backtester
+python run_all.py --module validation    # statistical validation
+python run_all.py --module prediction    # volatility predictor
+python run_all.py --module propfirm      # prop firm optimizer
+```
+
+Results (charts and CSVs) are saved to the `output/` directory by default.
 
 ---
 
@@ -65,25 +113,29 @@ pip install -r requirements.txt
 
 ### Run Everything
 ```bash
+# Uses data/data.csv by default
+python run_all.py
+
+# Or specify a custom CSV path
 python run_all.py --csv path/to/data.csv
 ```
 
 ### Run Specific Module
 ```bash
-python run_all.py --csv data.csv --module core
-python run_all.py --csv data.csv --module validation
-python run_all.py --csv data.csv --module prediction
-python run_all.py --csv data.csv --module propfirm
+python run_all.py --module core
+python run_all.py --module validation
+python run_all.py --module prediction
+python run_all.py --module propfirm
 ```
 
 ### Custom Capital & Point Value
 ```bash
-python run_all.py --csv data.csv --capital 25000 --point-value 20  # NQ
+python run_all.py --capital 25000 --point-value 20  # NQ
 ```
 
 ### Output Directory
 ```bash
-python run_all.py --csv data.csv --output-dir my_results/
+python run_all.py --output-dir my_results/
 ```
 
 ---
