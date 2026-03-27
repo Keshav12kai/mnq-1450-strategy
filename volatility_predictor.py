@@ -112,25 +112,30 @@ def build_features(df: pd.DataFrame, trades: pd.DataFrame) -> pd.DataFrame:
 
     feat_df = pd.DataFrame(feature_rows, index=trades.index)
 
-    # Lagged features (shift of window_range, entry_range, mae, morning_range)
+    # Lagged features with shift(1) — uses only past data (no lookahead).
+    # min_periods=1 keeps all samples; the first few rows get 0 as fallback
+    # via fillna(0) at the end.  This prevents the alignment-dropna bug that
+    # reduced 205 → 145 samples in earlier Colab runs.
     for lag in [1, 2, 3]:
         for col in ["window_range", "entry_range", "mae", "morning_range", "aftn_range"]:
             if col in feat_df.columns:
                 feat_df[f"{col}_lag{lag}"] = feat_df[col].shift(lag)
 
-    # Rolling stats on window_range
+    # Rolling stats on window_range — shift(1) ensures no future leakage
     for w in [5, 10, 20]:
         feat_df[f"wr_ma{w}"]  = feat_df["window_range"].shift(1).rolling(w, min_periods=1).mean()
         feat_df[f"wr_std{w}"] = feat_df["window_range"].shift(1).rolling(w, min_periods=1).std().fillna(0)
 
-    # EWM
+    # EWMA — shift(1) for correct lag; min_periods default is 0 in pandas ewm
     for span in [5, 10]:
-        feat_df[f"wr_ewm{span}"] = feat_df["window_range"].shift(1).ewm(span=span).mean()
+        feat_df[f"wr_ewm{span}"] = feat_df["window_range"].shift(1).ewm(span=span, min_periods=1).mean()
 
-    # MAE rolling
-    feat_df["mae_ma5"]  = feat_df["mae"].shift(1).rolling(5, min_periods=1).mean()
+    # MAE rolling — shift(1) to avoid future leakage
+    feat_df["mae_ma5"]  = feat_df["mae"].shift(1).rolling(5,  min_periods=1).mean()
     feat_df["mae_ma10"] = feat_df["mae"].shift(1).rolling(10, min_periods=1).mean()
 
+    # Fill any remaining NaN with 0 so every model receives a complete feature
+    # matrix — this is the key fix that preserves all samples through alignment.
     return feat_df.fillna(0)
 
 
@@ -154,19 +159,30 @@ FEATURE_COLS = [
 
 
 def predict_ewma(feat_df: pd.DataFrame, span: int = 10) -> np.ndarray:
-    return feat_df["window_range"].shift(1).ewm(span=span).mean().fillna(
-        feat_df["entry_range"] * 3.5).values
+    """EWMA of window_range shifted by 1 — pure past-data predictor."""
+    return (feat_df["window_range"]
+            .shift(1)
+            .ewm(span=span, min_periods=1)
+            .mean()
+            .fillna(feat_df["entry_range"] * 3.5)
+            .values)
 
 
 def predict_p75(feat_df: pd.DataFrame, window: int = 30) -> np.ndarray:
-    return feat_df["window_range"].shift(1).rolling(window, min_periods=5).quantile(0.75).fillna(
-        feat_df["entry_range"] * 3.5).values
+    """75th-percentile rolling window shifted by 1 (min_periods=1 keeps all samples)."""
+    return (feat_df["window_range"]
+            .shift(1)
+            .rolling(window, min_periods=1)
+            .quantile(0.75)
+            .fillna(feat_df["entry_range"] * 3.5)
+            .values)
 
 
 def predict_feature_scaling(feat_df: pd.DataFrame) -> np.ndarray:
-    """last5_avg_range × rolling historical multiplier (window_range / last5_avg_range)."""
+    """last5_avg_range × rolling historical multiplier (window_range / last5_avg_range).
+    shift(1) on the multiplier series prevents future leakage."""
     hist_mult = (feat_df["window_range"] / feat_df["last5_avg_range"].clip(lower=0.1)
-                 ).shift(1).rolling(20, min_periods=5).mean().fillna(3.5)
+                 ).shift(1).rolling(20, min_periods=1).mean().fillna(3.5)
     return (feat_df["last5_avg_range"] * hist_mult).values
 
 
@@ -468,19 +484,60 @@ def plot_pass_rate_comparison(sweep_results: list, baseline: float = 0.591,
     print(f"  Saved: {path}")
 
 
+# ── Daily Breach Diagnostics ──────────────────────────────────────────────────
+
+def _print_daily_breach_stats(trades: pd.DataFrame, contracts_arr: np.ndarray,
+                               prop_firm: dict) -> None:
+    """Count and print actual daily-limit breaches from the historical trade series."""
+    pnl_arr = (trades["pnl_both_pts"].values
+               if "pnl_both_pts" in trades.columns
+               else np.where(trades["direction"] == "LONG",
+                              trades["pnl_long_pts"],
+                              trades["pnl_short_pts"]).astype(float))
+    pv        = config.DEFAULT_POINT_VALUE
+    daily_lim = prop_firm["daily_loss_limit"]
+
+    breach_count  = 0
+    breach_detail = []
+    for i, (pts, c) in enumerate(zip(pnl_arr, contracts_arr)):
+        daily_pnl = pts * pv * int(c)
+        if daily_pnl < -daily_lim:
+            breach_count += 1
+            breach_detail.append((i, float(daily_pnl)))
+
+    pct = breach_count / max(len(trades), 1) * 100
+    print(f"  Daily-limit breaches (historical): {breach_count}/{len(trades)} = {pct:.1f}%")
+    if breach_detail:
+        worst = min(breach_detail, key=lambda x: x[1])
+        print(f"  Worst single day: trade #{worst[0]}  P&L=${worst[1]:,.0f}")
+    else:
+        print("  No daily-limit breaches in historical sample.")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def run(df_1min: pd.DataFrame, trades: pd.DataFrame, output_dir: str = "."):
     os.makedirs(output_dir, exist_ok=True)
-    filtered = trades[~trades["skip"]].copy()
 
-    if len(filtered) < 50:
+    # ── Pipeline stage diagnostics ──────────────────────────────────────────
+    n_raw      = len(trades)
+    filtered   = trades[~trades["skip"]].copy()
+    n_filtered = len(filtered)
+    print("\n=== Volatility Predictor ===")
+    print(f"  Pipeline stages:")
+    print(f"    Raw trades (all days):      {n_raw}")
+    print(f"    After smart filter:         {n_filtered}  "
+          f"(skipped {n_raw - n_filtered})")
+
+    if n_filtered < 50:
         print("  Not enough trades for volatility prediction.")
         return {}
 
-    print("\n=== Volatility Predictor ===")
     print("Building features …")
-    feat_df = build_features(df_1min, filtered)
+    feat_df    = build_features(df_1min, filtered)
+    n_features = len(feat_df)
+    print(f"    After feature build:        {n_features}  "
+          f"(all samples preserved — no alignment drop)")
 
     # Predictions
     print("Running prediction models …")
@@ -498,15 +555,34 @@ def run(df_1min: pd.DataFrame, trades: pd.DataFrame, output_dir: str = "."):
         "ensemble":      p_ens,
     }
 
-    # MAE predictions
+    # ── Alignment diagnostic ────────────────────────────────────────────────
+    # All models must produce a valid prediction for every sample.
+    # Verify no NaN slipped through — this is the fix for the 205→145 shrinkage.
+    n_total = len(filtered)
+    for mname, parray in predictions.items():
+        n_nan = int(np.isnan(parray).sum())
+        if n_nan:
+            print(f"  WARNING: {mname} has {n_nan} NaN predictions — filling with median")
+            predictions[mname] = np.where(np.isnan(parray),
+                                           np.nanmedian(parray), parray)
+    p_ewma   = predictions["ewma"]
+    p_p75    = predictions["p75"]
+    p_fscale = predictions["feat_scaling"]
+    p_gb     = predictions["gb"]
+    p_ens    = predictions["ensemble"]
+    print(f"  Samples going into model evaluation: {n_total}  (no alignment drop)")
+
+    # MAE predictions — use dedicated EWMA/P75 on the mae column directly.
+    # MAE is typically ~40-50% of window_range, so fallback uses 1.5× entry_range
+    # (vs 3.5× for window_range which includes both sides of the move).
     print("Predicting MAE …")
-    p_mae_gb  = predict_gradient_boosting(feat_df, "mae")
-    p_mae_ens = predict_ensemble(
-        predict_ewma(feat_df.rename(columns={"window_range": "_wr_orig", "mae": "window_range"})),
-        predict_p75(feat_df.rename(columns={"window_range": "_wr_orig", "mae": "window_range"})),
-        feat_df["mae_ma5"].values,
-        p_mae_gb
-    )
+    p_mae_ewma = (feat_df["mae"].shift(1).ewm(span=10, min_periods=1)
+                  .mean().fillna(feat_df["entry_range"] * 1.5).values)
+    p_mae_p75  = (feat_df["mae"].shift(1).rolling(30, min_periods=1)
+                  .quantile(0.75).fillna(feat_df["entry_range"] * 1.5).values)
+    p_mae_gb   = predict_gradient_boosting(feat_df, "mae")
+    p_mae_ens  = predict_ensemble(p_mae_ewma, p_mae_p75,
+                                  feat_df["mae_ma5"].values, p_mae_gb)
 
     # Evaluation
     print("\n── Model Evaluation ─────────────────────────────────────────")
@@ -517,6 +593,13 @@ def run(df_1min: pd.DataFrame, trades: pd.DataFrame, output_dir: str = "."):
             print(f"  {name:<16}: MAE={ev['mae']:.2f}  RMSE={ev['rmse']:.2f}  "
                   f"MAPE={ev['mape']:.1f}%  Corr={ev['corr']:.3f}  RegAcc={ev['regime_acc']*100:.1f}%")
 
+    # ── Predicted window_range / MAE distribution ───────────────────────────
+    print("\n── Predicted window_range Distribution ──────────────────────")
+    for pct in [10, 25, 50, 75, 90]:
+        print(f"  {pct:>3}th pct: range={np.nanpercentile(p_ens, pct):.1f} pts  "
+              f"mae={np.nanpercentile(p_mae_ens, pct):.1f} pts")
+    print(f"  mean range={p_ens.mean():.1f}   mean mae={p_mae_ens.mean():.1f}")
+
     # Volatility clustering
     vc = volatility_clustering(feat_df)
     print("\n── Volatility Clustering ────────────────────────────────────")
@@ -525,28 +608,49 @@ def run(df_1min: pd.DataFrame, trades: pd.DataFrame, output_dir: str = "."):
     print(f"  EWMA Corr: {vc['ewma_corr']:.3f}")
     print(f"  Regime HH: {vc['hh_pct']*100:.1f}%   LL: {vc['ll_pct']*100:.1f}%")
 
-    # Position sizing for default prop firm (Topstep $50K)
+    # Position sizing for default prop firm
     default_firm = config.PROP_FIRMS[0]
     print(f"\n── Position Sizing ({default_firm['name']}) ──────────────────────────")
+    print(f"  Effective rule set:")
+    print(f"    profit_target    = ${default_firm['profit_target']:,}")
+    print(f"    max_drawdown     = ${default_firm['max_drawdown']:,}")
+    print(f"    daily_loss_limit = ${default_firm['daily_loss_limit']:,}")
+    print(f"    challenge_days   = {default_firm['challenge_days']}")
+    print(f"    safety_buffer    = {config.SAFETY_BUFFER_DEFAULT*100:.0f}%")
+    print(f"    point_value      = ${config.DEFAULT_POINT_VALUE:.1f}/pt ({config.DEFAULT_INSTRUMENT})")
+
+    # contracts = min(range_based, mae_based) as intended
+    daily_lim = default_firm["daily_loss_limit"]
     contracts_wr  = np.array([contracts_from_prediction(float(p_ens[i]),
-                                                         default_firm["daily_loss_limit"],
+                                                         daily_lim,
                                                          config.SAFETY_BUFFER_DEFAULT)
                                for i in range(len(filtered))])
-    contracts_mae = np.array([contracts_from_prediction(float(p_mae_ens[i]) if i < len(p_mae_ens) else float(p_mae_gb[i]),
-                                                         default_firm["daily_loss_limit"],
+    contracts_mae = np.array([contracts_from_prediction(float(p_mae_ens[i]),
+                                                         daily_lim,
                                                          config.SAFETY_BUFFER_DEFAULT)
                                for i in range(len(filtered))])
     contracts_final = np.minimum(contracts_wr, contracts_mae)
+
+    # ── Contract distribution and percentiles ──────────────────────────────
+    print(f"\n── Contract Distribution (final = min(range, MAE)) ──────────")
     print(f"  Avg contracts (WR pred):    {contracts_wr.mean():.1f}")
     print(f"  Avg contracts (MAE pred):   {contracts_mae.mean():.1f}")
     print(f"  Avg contracts (final min):  {contracts_final.mean():.1f}")
+    for pct in [10, 25, 50, 75, 90]:
+        print(f"  {pct:>3}th pct: {int(np.percentile(contracts_final, pct))} contracts")
 
     # Safety buffer sweep
     print("\n── Safety Buffer Sweep ──────────────────────────────────────")
     sweep = safety_buffer_sweep(filtered, feat_df, p_ens, default_firm, n_mc=500)
+    best = max(sweep, key=lambda r: r["pass_rate"])
     for r in sweep:
+        marker = " ◄ best" if r["buffer"] == best["buffer"] else ""
         print(f"  Buffer {r['buffer']*100:.0f}%: pass_rate={r['pass_rate']*100:.1f}%  "
-              f"avg_contracts={r['avg_contracts']:.1f}")
+              f"avg_contracts={r['avg_contracts']:.1f}{marker}")
+
+    # ── Daily-limit breach counts (simulation at default buffer) ───────────
+    print("\n── Daily-Limit Breach Diagnostics ───────────────────────────")
+    _print_daily_breach_stats(filtered, contracts_final, default_firm)
 
     # Charts
     print("\nGenerating prediction charts …")
@@ -554,11 +658,12 @@ def run(df_1min: pd.DataFrame, trades: pd.DataFrame, output_dir: str = "."):
     plot_pass_rate_comparison(sweep, output_dir=output_dir)
 
     return {
-        "feat_df":       feat_df,
-        "predictions":   predictions,
+        "feat_df":         feat_df,
+        "predictions":     predictions,
         "contracts_final": contracts_final,
-        "sweep":         sweep,
+        "sweep":           sweep,
     }
+
 
 
 if __name__ == "__main__":
