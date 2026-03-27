@@ -23,9 +23,37 @@ warnings.filterwarnings("ignore")
 
 # ── Data Loading ─────────────────────────────────────────────────────────────
 
+def _resolve_csv_path(csv_path: str) -> str:
+    """
+    Return the path to use for reading.  Tries, in order:
+      1. The path as given (handles both .csv and .csv.gz)
+      2. csv_path + ".gz"  (user stored a compressed copy)
+      3. csv_path without the trailing ".gz"  (uncommon, but symmetric)
+    Raises FileNotFoundError with helpful message if nothing found.
+    """
+    if os.path.isfile(csv_path):
+        return csv_path
+    gz_path = csv_path + ".gz"
+    if os.path.isfile(gz_path):
+        return gz_path
+    # Also try stripping .gz in case user passed the .gz path but only .csv exists
+    if csv_path.endswith(".gz") and os.path.isfile(csv_path[:-3]):
+        return csv_path[:-3]
+    raise FileNotFoundError(
+        f"Data file not found: {csv_path}\n"
+        "Options:\n"
+        "  1. Run the download script:  python download_data.py\n"
+        "  2. Place your CSV at:        data/data.csv\n"
+        "  3. Place a compressed copy:  data/data.csv.gz\n"
+        "     (compress with: gzip -k your_file.csv)\n"
+        "  4. Pass a custom path:       python run_all.py --csv /path/to/file.csv"
+    )
+
+
 def load_data(csv_path: str) -> pd.DataFrame:
-    """Load and parse the 1-minute bar CSV."""
-    df = pd.read_csv(csv_path)
+    """Load and parse the 1-minute bar CSV (plain or gzip-compressed)."""
+    resolved = _resolve_csv_path(csv_path)
+    df = pd.read_csv(resolved)
     # Normalise column names
     df.columns = [c.strip() for c in df.columns]
     # timestamp ET
