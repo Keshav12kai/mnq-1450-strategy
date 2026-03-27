@@ -33,6 +33,7 @@ The strategy trades the **14:50 ET candle** on MNQ:
 
 ```
 mnq-1450-strategy/
+├── colab_v2_best_strategy.py  # Standalone Colab script (start here)
 ├── config.py                 # Central configuration
 ├── core_strategy.py          # Main backtester
 ├── advanced_validation.py    # Statistical validation suite
@@ -45,7 +46,42 @@ mnq-1450-strategy/
 
 ---
 
-## Installation
+## ⚡ Quick Start: Colab (Google Colab — recommended for large files)
+
+1. Open a new Colab notebook
+2. Mount Google Drive or upload your CSV
+3. Copy-paste the entire `colab_v2_best_strategy.py` into one cell
+4. Set `CSV_PATH` at the top of the cell
+5. Run — all outputs go to the `outputs_v2/` directory
+
+```python
+# At the top of colab_v2_best_strategy.py:
+from google.colab import drive
+drive.mount('/content/drive')
+CSV_PATH = "/content/drive/MyDrive/data/Dataset_NQ_1min_2022_2025.csv"
+```
+
+The Colab script is fully standalone — no other files needed.
+
+---
+
+## Why Does Pass Rate Change with Different Rules?
+
+This is the most important insight.  The 86.7% result and a ~60-65% result on 30-day rules are **both correct** — they just use different prop firm rule sets:
+
+| Rule Set | Challenge Days | Max DD | Daily Limit | Pass Rate |
+|----------|---------------|--------|-------------|-----------|
+| **v2-reference** (original result) | **10** | $2,000 | $1,000 | **~86.7%** |
+| Your 30-day challenge | **30** | $2,000 | $1,000 | **~60-65%** |
+| Apex-style | 7 | $2,500 | $1,000 | ~80-85% |
+
+**Why?**  Each trading day is an independent risk event.  A 30-day challenge runs 3× more trades than a 10-day challenge, giving the drawdown and daily-loss limits 3× as many chances to trigger a failure.  The underlying trading edge (win rate, P&L distribution) is identical.
+
+`challenge_days` is the single biggest driver of pass rate variance.  A $500 difference in max drawdown changes pass rate by ~5-10 pp.  Adding 20 extra challenge days can cut it by 20-25 pp.
+
+The `colab_v2_best_strategy.py` script runs **both** rule sets side-by-side so you can see the exact difference on your data.
+
+---
 
 ```bash
 pip install -r requirements.txt
@@ -107,11 +143,24 @@ python run_all.py --csv data.csv --output-dir my_results/
 
 ## Module Descriptions
 
+### `colab_v2_best_strategy.py` ← **Start here for Colab**
+Standalone single-cell Colab script (copy-paste the whole file):
+- Full v2 pipeline: smart filter → features → 5 models → Ensemble → prop firm MC
+- **Prints pipeline stage trade counts** at every step (so you can see the 225→205 etc.)
+- **No alignment dropna** — all samples are preserved through the feature/prediction pipeline
+- **Prints the effective rule set** at startup (instrument, firm config, buffer, etc.)
+- **Side-by-side comparison** of v2-reference (10-day) vs your 30-day challenge rules
+- Predicted window_range / MAE distribution, contract distribution and percentiles
+- Daily-limit breach counts from historical data
+- Saves charts to `outputs_v2/`
+
 ### `config.py`
 Central configuration for all parameters:
 - Initial capital, point values, entry/exit times
 - Smart filter settings
-- 25+ prop firm configurations (Topstep, Apex, MyFundedFutures, TradeDay, etc.)
+- **`DAILY_LOSS_LIMIT`** — explicit configurable daily loss limit (default $1,000)
+- **`challenge_days` explanation** — key driver of pass rate variance (see comments)
+- 25+ prop firm configurations including v2-reference (10-day) and user 30-day variants
 - DD reduction levels (3%/6%/8%)
 - Monte Carlo and walk-forward settings
 
@@ -134,10 +183,12 @@ Statistical validation suite:
 ### `volatility_predictor.py`
 The KEY innovation — predicts the full 14:50-14:59 window range:
 - 5 prediction models: EWMA, P75, Feature Scaling, Gradient Boosting, **Ensemble**
-- Walk-forward ML (no lookahead bias)
-- Positions sized as: `contracts = (daily_limit / (predicted_range × $2)) × safety_buffer`
-- Safety buffer sweep (30%→100%)
-- **Winning config: Ensemble + 60% buffer = 86.7% pass rate**
+- Walk-forward ML (no lookahead bias); `shift(1)` / `min_periods=1` on all lag/rolling features
+- **Fixed alignment bug** — `fillna(0)` + `min_periods=1` prevents sample loss (was 205→145)
+- Positions sized as `min(range_based, MAE_based)` contracts
+- Safety buffer sweep (30%→100%) with best-buffer marker
+- **Pipeline diagnostics**: stage counts, prediction distributions, contract percentiles, daily-limit breach counts
+- **Prints effective rule set** before simulation
 
 ### `propfirm_optimizer.py`
 - Contract sweep (1-50) for any prop firm
