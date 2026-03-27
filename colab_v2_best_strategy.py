@@ -452,7 +452,7 @@ def prop_firm_mc(pnl_pts: np.ndarray, contracts_arr: np.ndarray,
             c   = int(contracts_arr[idx])
 
             # DD reduction
-            dd_frac = (equity - peak) / max(abs(peak), 1e-6) if peak != 0 else 0.0
+            dd_frac = (equity - peak) / max(abs(peak), 1e-6)
             for thresh, cut in DD_LEVELS:
                 if abs(dd_frac) >= thresh:
                     c = max(1, int(c * (1 - cut)))
@@ -669,12 +669,13 @@ def _dark_fig(*args, **kwargs):
 
 
 def plot_equity_comparison(dyn_equity: np.ndarray, base_equity: np.ndarray,
+                           initial_capital: float, baseline_contracts: int,
                            output_dir: str):
     fig, ax = _dark_fig(figsize=(12, 5))
     ax.plot(dyn_equity,  label="v2 Dynamic (Ensemble + buffer)", color="#42a5f5", lw=1.5)
-    ax.plot(base_equity, label=f"Baseline fixed {BASELINE_CONTRACTS} MNQ",
+    ax.plot(base_equity, label=f"Baseline fixed {baseline_contracts} MNQ",
             color="#ffa726", lw=1.5, alpha=0.8)
-    ax.axhline(INITIAL_CAPITAL, color="gray", linestyle="--", alpha=0.5)
+    ax.axhline(initial_capital, color="gray", linestyle="--", alpha=0.5)
     ax.set_title("Equity Curve: v2 Dynamic vs Baseline")
     ax.set_xlabel("Trade #")
     ax.set_ylabel("Capital ($)")
@@ -688,12 +689,13 @@ def plot_equity_comparison(dyn_equity: np.ndarray, base_equity: np.ndarray,
 
 
 def plot_pass_rate_sweep(sweep_df: pd.DataFrame, baseline_pass: float,
-                         best_buf: int, output_dir: str):
+                         best_buf: int, baseline_contracts: int,
+                         output_dir: str):
     fig, ax = _dark_fig(figsize=(9, 5))
     ax.plot(sweep_df["buffer_%"], sweep_df["pass_rate_%"],
             "o-", color="#42a5f5", lw=2, label="v2 Ensemble")
     ax.axhline(baseline_pass * 100, color="#ef5350", linestyle="--",
-               label=f"Baseline fixed {BASELINE_CONTRACTS}-contract ({baseline_pass*100:.1f}%)")
+               label=f"Baseline fixed {baseline_contracts}-contract ({baseline_pass*100:.1f}%)")
     ax.axvline(best_buf, color="#26a69a", linestyle=":", alpha=0.7,
                label=f"Optimal buffer ({best_buf}%)")
     ax.set_title("Prop Firm Pass Rate vs Safety Buffer")
@@ -907,8 +909,10 @@ def run(csv_path: str,
 
     # ── 12. Charts ────────────────────────────────────────────────────────────
     print("\nGenerating charts …")
-    plot_equity_comparison(res_dyn["equity_curve"], res_base["equity_curve"], output_dir)
-    plot_pass_rate_sweep(sweep_df, mc_base["pass_rate"], best_buf_pct, output_dir)
+    plot_equity_comparison(res_dyn["equity_curve"], res_base["equity_curve"],
+                           initial_capital, BASELINE_CONTRACTS, output_dir)
+    plot_pass_rate_sweep(sweep_df, mc_base["pass_rate"], best_buf_pct,
+                         BASELINE_CONTRACTS, output_dir)
     plot_prediction_scatter(feat, preds, output_dir)
     plot_model_mae_comparison(feat, preds, output_dir)
 
