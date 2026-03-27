@@ -9,6 +9,7 @@ Modules:
     validation  — run advanced validation
     prediction  — run volatility predictor
     propfirm    — run prop firm optimizer
+    v2          — run v2 best strategy (Ensemble @ 60% buffer + comparison table)
     all         — run all modules (default)
 """
 
@@ -30,7 +31,7 @@ def parse_args():
     )
     parser.add_argument(
         "--module", type=str, default="all",
-        choices=["core", "validation", "prediction", "propfirm", "all"],
+        choices=["core", "validation", "prediction", "propfirm", "v2", "all"],
         help="Which module to run (default: all)"
     )
     parser.add_argument(
@@ -108,6 +109,17 @@ def run_propfirm(trades_df, output_dir: str):
     print(f"\n  ✓ Prop firm module completed in {time.time()-t0:.1f}s")
 
 
+def run_v2(csv_path: str, output_dir: str):
+    import colab_v2_best_strategy as v2
+
+    print("\n" + "=" * 60)
+    print("  MODULE: v2 Best Strategy (Ensemble @ 60% buffer)")
+    print("=" * 60)
+    t0 = time.time()
+    v2.run_v2_pipeline(csv_path, output_dir=output_dir)
+    print(f"\n  ✓ v2 module completed in {time.time()-t0:.1f}s")
+
+
 def main():
     args = parse_args()
 
@@ -130,9 +142,11 @@ def main():
 
     t_start = time.time()
 
-    # Always need core data
+    # Always need core data (except for the self-contained v2 module)
     results = trades = df = None
-    if args.module in ("core", "all"):
+    if args.module == "v2":
+        run_v2(args.csv, args.output_dir)
+    elif args.module in ("core", "all"):
         results, trades, df = run_core(args.csv, args.capital, args.point_value, args.output_dir)
     else:
         # Load data only
