@@ -26,7 +26,7 @@ def parse_args():
     )
     parser.add_argument(
         "--csv", type=str, default=config.CSV_PATH,
-        help="Path to 1-minute bar CSV file"
+        help="Path to 1-minute bar CSV file (.csv or .csv.gz)"
     )
     parser.add_argument(
         "--module", type=str, default="all",
@@ -111,10 +111,21 @@ def run_propfirm(trades_df, output_dir: str):
 def main():
     args = parse_args()
 
-    # Validate CSV path
-    if not os.path.isfile(args.csv):
-        print(f"ERROR: CSV file not found: {args.csv}")
-        print("Usage: python run_all.py --csv path/to/data.csv")
+    # Validate CSV path — also accept .csv.gz and auto-detect compressed variant
+    csv_candidates = [args.csv, args.csv + ".gz"]
+    if args.csv.endswith(".gz"):
+        csv_candidates.append(args.csv[:-3])
+    if not any(os.path.isfile(c) for c in csv_candidates):
+        print(f"ERROR: Data file not found: {args.csv}")
+        print()
+        print("To get your data, choose one of:")
+        print("  1. Download recent data (last 7 days):")
+        print("       python download_data.py")
+        print("  2. Place your existing CSV at:  data/data.csv")
+        print("  3. Compress a large CSV and place at:  data/data.csv.gz")
+        print("       gzip -k data/data.csv")
+        print("  4. Pass a custom path:")
+        print("       python run_all.py --csv /path/to/your/file.csv")
         sys.exit(1)
 
     os.makedirs(args.output_dir, exist_ok=True)

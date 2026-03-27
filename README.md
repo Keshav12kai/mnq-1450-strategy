@@ -33,15 +33,108 @@ The strategy trades the **14:50 ET candle** on MNQ:
 
 ```
 mnq-1450-strategy/
+├── data/                     # ← place your CSV file here (e.g. data/data.csv or data/data.csv.gz)
 ├── config.py                 # Central configuration
 ├── core_strategy.py          # Main backtester
 ├── advanced_validation.py    # Statistical validation suite
 ├── volatility_predictor.py   # ML volatility prediction & position sizing
 ├── propfirm_optimizer.py     # Prop firm challenge optimizer
+├── download_data.py          # Download recent MNQ data via yfinance
 ├── run_all.py                # Single entry point CLI
 ├── requirements.txt          # Python dependencies
 └── README.md                 # This file
 ```
+
+---
+
+## Quick Start
+
+### 1. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+Requires **Python 3.8+** with pandas, numpy, matplotlib, scipy, scikit-learn, and yfinance.
+
+### 2. Get your historical data
+
+Because 1-minute MNQ bar files are large (100 MB+), they are not included in
+this repository.  Choose whichever option fits your situation:
+
+#### Option A — Download recent data automatically (free, no sign-up)
+
+```bash
+python download_data.py
+```
+
+This downloads the last 7 days of 1-minute MNQ bars via Yahoo Finance and
+saves them to `data/data.csv`.  Useful for a quick test-run.
+
+> **Note:** Yahoo Finance only provides the last 7 calendar days of 1-minute
+> data.  For a meaningful multi-year backtest you need Option B or C.
+
+#### Option B — Compress your existing large CSV
+
+If you already have a full history CSV (e.g. exported from NinjaTrader,
+Sierra Chart, Tradovate, or another platform), you can compress it to make
+it ~10× smaller — the system reads compressed files natively:
+
+```bash
+# Compress (creates data/data.csv.gz, keeps the original)
+gzip -k data/data.csv
+
+# Then run normally
+python run_all.py
+```
+
+You can also pass the `.csv.gz` path explicitly:
+
+```bash
+python run_all.py --csv data/data.csv.gz
+```
+
+#### Option C — Place or link your CSV directly
+
+```
+mnq-1450-strategy/
+└── data/
+    └── data.csv        ← plain CSV (up to ~100 MB is fine locally)
+    └── data.csv.gz     ← or a gzip-compressed copy
+```
+
+> Data files are excluded from git (`.gitignore`) so they will never be
+> accidentally committed regardless of size.
+
+#### Where to obtain multi-year 1-minute MNQ data
+
+| Source | Notes |
+|--------|-------|
+| **NinjaTrader** | Export via *Historical Data Manager* → CSV |
+| **Sierra Chart** | File → Save Chart Data → CSV |
+| **Tradovate** | Account → Data Download |
+| **Rithmic / CQG** | Via your broker's data export tools |
+| **Polygon.io** | Paid API; free tier available for US equities/futures |
+| **Alpaca Markets** | Futures data via REST API (subscription required) |
+
+### 3. Run the system
+
+```bash
+# Run all modules using data/data.csv (default)
+python run_all.py
+
+# Run all modules with a custom path (plain or compressed)
+python run_all.py --csv /path/to/your/mnq_1min.csv
+python run_all.py --csv /path/to/your/mnq_1min.csv.gz
+
+# Run a specific module only
+python run_all.py --module core          # core backtester
+python run_all.py --module validation    # statistical validation
+python run_all.py --module prediction    # volatility predictor
+python run_all.py --module propfirm      # prop firm optimizer
+```
+
+Results (charts and CSVs) are saved to the `output/` directory by default.
 
 ---
 
@@ -58,6 +151,7 @@ pip install -r requirements.txt
 - matplotlib
 - scipy
 - scikit-learn
+- yfinance
 
 ---
 
@@ -65,25 +159,30 @@ pip install -r requirements.txt
 
 ### Run Everything
 ```bash
+# Uses data/data.csv (or data/data.csv.gz) by default
+python run_all.py
+
+# Or specify a custom CSV path (plain or gzip-compressed)
 python run_all.py --csv path/to/data.csv
+python run_all.py --csv path/to/data.csv.gz
 ```
 
 ### Run Specific Module
 ```bash
-python run_all.py --csv data.csv --module core
-python run_all.py --csv data.csv --module validation
-python run_all.py --csv data.csv --module prediction
-python run_all.py --csv data.csv --module propfirm
+python run_all.py --module core
+python run_all.py --module validation
+python run_all.py --module prediction
+python run_all.py --module propfirm
 ```
 
 ### Custom Capital & Point Value
 ```bash
-python run_all.py --csv data.csv --capital 25000 --point-value 20  # NQ
+python run_all.py --capital 25000 --point-value 20  # NQ
 ```
 
 ### Output Directory
 ```bash
-python run_all.py --csv data.csv --output-dir my_results/
+python run_all.py --output-dir my_results/
 ```
 
 ---

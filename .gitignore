@@ -10,5 +10,6 @@ build/
 venv/
 .env
 *.csv
+*.csv.gz
 output/
 *.png
