@@ -9,7 +9,14 @@ Modules:
     validation  — run advanced validation
     prediction  — run volatility predictor
     propfirm    — run prop firm optimizer
+    v2          — run v2 best strategy (Ensemble + dynamic sizing, prop firm pass rate)
     all         — run all modules (default)
+
+v2 additional flags:
+    --daily-limit   prop firm daily loss limit in dollars  (default: 1000)
+    --target        prop firm profit target in dollars     (default: 3000)
+    --max-dd        prop firm max drawdown in dollars      (default: 2000)
+    --days          prop firm challenge days               (default: 30)
 """
 
 import argparse
@@ -30,7 +37,7 @@ def parse_args():
     )
     parser.add_argument(
         "--module", type=str, default="all",
-        choices=["core", "validation", "prediction", "propfirm", "all"],
+        choices=["core", "validation", "prediction", "propfirm", "v2", "all"],
         help="Which module to run (default: all)"
     )
     parser.add_argument(
@@ -46,6 +53,25 @@ def parse_args():
         "--output-dir", type=str, default="output",
         dest="output_dir",
         help="Directory for output charts and CSVs (default: output)"
+    )
+    # v2-specific parameters
+    parser.add_argument(
+        "--daily-limit", type=float, default=1_000.0,
+        dest="daily_limit",
+        help="[v2] Prop firm daily loss limit in dollars (default: 1000)"
+    )
+    parser.add_argument(
+        "--target", type=float, default=3_000.0,
+        help="[v2] Prop firm profit target in dollars (default: 3000)"
+    )
+    parser.add_argument(
+        "--max-dd", type=float, default=2_000.0,
+        dest="max_drawdown",
+        help="[v2] Prop firm max drawdown in dollars (default: 2000)"
+    )
+    parser.add_argument(
+        "--days", type=int, default=30,
+        help="[v2] Prop firm challenge days (default: 30)"
     )
     return parser.parse_args()
 
@@ -108,6 +134,29 @@ def run_propfirm(trades_df, output_dir: str):
     print(f"\n  ✓ Prop firm module completed in {time.time()-t0:.1f}s")
 
 
+def run_v2(csv_path: str, capital: float, point_value: float,
+           daily_limit: float, profit_target: float,
+           max_drawdown: float, challenge_days: int,
+           output_dir: str):
+    import colab_v2_best_strategy as v2
+
+    print("\n" + "=" * 60)
+    print("  MODULE: v2 Best Strategy")
+    print("=" * 60)
+    t0 = time.time()
+    v2.run(
+        csv_path       = csv_path,
+        point_value    = point_value,
+        daily_limit    = daily_limit,
+        profit_target  = profit_target,
+        max_drawdown   = max_drawdown,
+        challenge_days = challenge_days,
+        initial_capital= capital,
+        output_dir     = output_dir,
+    )
+    print(f"\n  ✓ v2 module completed in {time.time()-t0:.1f}s")
+
+
 def main():
     args = parse_args()
 
@@ -129,6 +178,24 @@ def main():
     print(f"  Output dir:  {args.output_dir}")
 
     t_start = time.time()
+
+    # v2 module runs its own self-contained pipeline; exit after completion
+    if args.module == "v2":
+        run_v2(
+            csv_path      = args.csv,
+            capital       = args.capital,
+            point_value   = args.point_value,
+            daily_limit   = args.daily_limit,
+            profit_target = args.target,
+            max_drawdown  = args.max_drawdown,
+            challenge_days= args.days,
+            output_dir    = args.output_dir,
+        )
+        print("\n" + "=" * 60)
+        print(f"  ALL DONE — total time: {time.time()-t_start:.1f}s")
+        print(f"  Output saved to: {os.path.abspath(args.output_dir)}/")
+        print("=" * 60)
+        return
 
     # Always need core data
     results = trades = df = None
