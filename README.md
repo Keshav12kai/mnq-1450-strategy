@@ -38,6 +38,7 @@ mnq-1450-strategy/
 ├── advanced_validation.py    # Statistical validation suite
 ├── volatility_predictor.py   # ML volatility prediction & position sizing
 ├── propfirm_optimizer.py     # Prop firm challenge optimizer
+├── colab_v2_best_strategy.py # ★ v2 Colab / standalone script (best strategy)
 ├── run_all.py                # Single entry point CLI
 ├── requirements.txt          # Python dependencies
 └── README.md                 # This file
@@ -61,6 +62,76 @@ pip install -r requirements.txt
 
 ---
 
+## Colab Quickstart (Best v2)
+
+The fastest way to run the winning strategy (Ensemble @ 60% buffer) is the
+**self-contained Colab script** `colab_v2_best_strategy.py`.
+
+### Step 1 — Open Google Colab
+
+Go to [colab.research.google.com](https://colab.research.google.com) and create a new notebook.
+
+### Step 2 — Clone the repo & install dependencies
+
+```python
+!git clone https://github.com/Keshav12kai/mnq-1450-strategy.git
+%cd mnq-1450-strategy
+!pip install -q -r requirements.txt
+```
+
+### Step 3 — Upload your CSV (choose one option)
+
+**Option A — Google Drive mount (recommended for large files):**
+```python
+from google.colab import drive
+drive.mount('/content/drive')
+CSV_PATH = "/content/drive/MyDrive/Dataset_NQ_1min_2022_2025.csv"
+```
+
+**Option B — Direct upload:**
+```python
+from google.colab import files
+uploaded = files.upload()          # file picker appears
+CSV_PATH = list(uploaded.keys())[0]
+```
+
+### Step 4 — Run the v2 pipeline
+
+```python
+import sys
+sys.path.insert(0, '/content/mnq-1450-strategy')
+import colab_v2_best_strategy as v2
+v2.run_v2_pipeline(CSV_PATH)
+```
+
+**Or run as a standalone script (local machine):**
+```bash
+python colab_v2_best_strategy.py --csv Dataset_NQ_1min_2022_2025.csv
+```
+
+### What you get
+
+| Output | Description |
+|--------|-------------|
+| Console table | Final comparison: Ensemble v2 @ 60% buffer vs Fixed-9 baseline |
+| `output_v2/equity_comparison_v2.png` | Equity curves + drawdown overlay |
+| `output_v2/safety_buffer_sweep_v2.png` | Pass rate vs buffer chart |
+| `output_v2/prediction_vs_actual_v2.png` | Ensemble prediction accuracy |
+| `output_v2/trade_log_v2_ensemble.csv` | Full trade log (dynamic sizing) |
+| `output_v2/trade_log_baseline_fixed9.csv` | Full trade log (fixed-9) |
+
+### v2 via `run_all.py`
+
+```bash
+# Run only the v2 best strategy module
+python run_all.py --csv Dataset_NQ_1min_2022_2025.csv --module v2
+
+# Run everything including v2 pipeline (runs all modules)
+python run_all.py --csv Dataset_NQ_1min_2022_2025.csv
+```
+
+---
+
 ## Usage
 
 ### Run Everything
@@ -74,6 +145,7 @@ python run_all.py --csv data.csv --module core
 python run_all.py --csv data.csv --module validation
 python run_all.py --csv data.csv --module prediction
 python run_all.py --csv data.csv --module propfirm
+python run_all.py --csv data.csv --module v2        # ★ v2 best strategy
 ```
 
 ### Custom Capital & Point Value
@@ -106,6 +178,15 @@ python run_all.py --csv data.csv --output-dir my_results/
 ---
 
 ## Module Descriptions
+
+### `colab_v2_best_strategy.py`
+The **ready-to-copy v2 best strategy script** — runs the complete pipeline in one file:
+- Colab-friendly (Drive mount or direct upload)
+- Feature engineering for window range & MAE
+- 5 prediction models + **Ensemble** (walk-forward, no lookahead)
+- Safety-buffer sweep (30%→100%)
+- **Backtest: Ensemble @ 60% buffer vs Fixed-9 baseline**
+- Final comparison table + 3 charts + trade log CSVs
 
 ### `config.py`
 Central configuration for all parameters:
