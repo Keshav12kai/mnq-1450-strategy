@@ -15,8 +15,23 @@ DEFAULT_INSTRUMENT = "MNQ"
 DEFAULT_POINT_VALUE = POINT_VALUE[DEFAULT_INSTRUMENT]
 
 # ── Strategy Timing ──────────────────────────────────────────────────────────
-ENTRY_TIME  = "14:50"          # enter at close of 14:50 candle
-EXIT_TIME   = "14:59"          # exit at close of 14:59 candle
+ENTRY_TIME        = "14:50"    # single-window mode: enter at close of this candle
+EXIT_TIME         = "14:59"    # single-window mode: exit at close of this candle
+ENTRY_HOLD_MINUTES = 9         # hold duration used across all windows
+
+# ── Multi-Window Configuration ───────────────────────────────────────────────
+# Each tuple: (entry_hour, entry_minute, exit_hour, exit_minute, label)
+# These are the top 5 windows discovered by the window scan (ET timestamps).
+# ⚠ Timezone note: these times are in EASTERN TIME (ET / New York).
+#   In TradingView/Pine Script, verify your chart is set to "America/New_York"
+#   so that 14:50 ET appears as 14:50 on the chart, NOT 13:50 (CT) or 15:50.
+MULTI_WINDOWS = [
+    (12, 16, 12, 25, "12:16→12:25"),
+    (12, 51, 13,  0, "12:51→13:00"),
+    (13, 55, 14,  4, "13:55→14:04"),
+    (14, 50, 14, 59, "14:50→14:59"),   # original window (pre-close positioning)
+    (15, 48, 15, 57, "15:48→15:57"),   # closing auction window (CBOE volume spike)
+]
 
 # ── Smart Filters ────────────────────────────────────────────────────────────
 SKIP_THURSDAYS     = True
@@ -118,6 +133,19 @@ MC_PERCENTILES = [5, 25, 50, 75, 95]
 # ── Walk-Forward ─────────────────────────────────────────────────────────────
 WF_WINDOWS     = 5
 WF_TRAIN_RATIO = 0.60
+
+# ── Selection Bias Mitigation ────────────────────────────────────────────────
+# Total number of 1-minute RTH windows scanned during strategy discovery.
+# At 9:30–15:50 RTH with 9-min hold, there are ~381 valid entry minutes.
+BIAS_N_WINDOWS_SCANNED      = 381
+# Average number of trades observed per window after smart filters
+BIAS_AVG_TRADES_PER_WINDOW  = 225
+# Minimum Sharpe ratio used to identify "good" windows
+BIAS_SHARPE_THRESHOLD       = 2.0
+# Monte Carlo runs for the null-hypothesis lucky-window simulation
+BIAS_NULL_SIMS              = 5_000
+# Permutation runs for the multiple-comparison significance test
+BIAS_PERMUTATION_RUNS       = 5_000
 
 # ── Chart Output ─────────────────────────────────────────────────────────────
 CHART_DPI = 150
