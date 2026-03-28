@@ -121,3 +121,18 @@ WF_TRAIN_RATIO = 0.60
 
 # ── Chart Output ─────────────────────────────────────────────────────────────
 CHART_DPI = 150
+
+# ── Selection Bias Analysis ───────────────────────────────────────────────────
+# Walk-forward cross-validation settings
+SB_N_FOLDS             = 4      # number of equal time folds
+SB_TOP_N               = 5      # top windows selected in-sample per fold
+
+# Null-distribution simulation settings
+# Matches the full multi-window scan described in the problem: 381 windows,
+# each with ~225 qualifying trades (after smart filters) over the data set.
+SB_N_WINDOWS           = 381    # total candidate windows scanned
+SB_N_TRADES_PER_WINDOW = 225    # approximate trades per window (for null sim)
+SB_NULL_SIMS           = 10_000 # Monte Carlo iterations for null distribution
+# Calibrated to the observed strategy: mean=0 (null), std≈$54/trade
+# (derived from observed Sharpe 2.55, n=225:  std = mean/Sharpe*sqrt(252))
+SB_NULL_PNL_STD        = 54.0   # $/trade std for null simulation
