@@ -2,6 +2,11 @@
 
 A complete, production-ready MNQ (Micro Nasdaq Futures) trading strategy backtesting and prop firm challenge optimization system.
 
+> 📖 **New to the strategy or want the full picture?**
+> Read the **[STRATEGY_GUIDE.md](STRATEGY_GUIDE.md)** — it contains the strategy rationale,
+> selection bias mitigation, all 5 optimised trading windows, prop firm pass-rate results,
+> daily execution checklist, and walk-forward retesting guidance.
+
 ---
 
 ## Strategy Overview
@@ -40,6 +45,7 @@ mnq-1450-strategy/
 ├── propfirm_optimizer.py     # Prop firm challenge optimizer
 ├── run_all.py                # Single entry point CLI
 ├── requirements.txt          # Python dependencies
+├── STRATEGY_GUIDE.md         # ★ Full strategy reference, checklist & research findings
 └── README.md                 # This file
 ```
 
@@ -243,6 +249,18 @@ The 30-bar lookback average range dominates — recent volatility is highly pred
 | Multiplier | 3.5× |
 
 Previous versions sized positions on the entry candle range, causing frequent daily limit breaches. This system sizes on the **predicted full window range**, eliminating that failure mode.
+
+---
+
+## Further Reading
+
+See **[STRATEGY_GUIDE.md](STRATEGY_GUIDE.md)** for the complete strategy reference:
+- Selection bias explanation & mitigation methodology
+- All 5 optimised time windows with conviction ratings
+- Full daily execution checklist and filter rules
+- Prop firm pass-rate summary table
+- Edge decay monitoring guidance
+- Walk-forward retesting schedule
 
 ---
 
