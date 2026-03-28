@@ -30,7 +30,7 @@ def parse_args():
     )
     parser.add_argument(
         "--module", type=str, default="all",
-        choices=["core", "validation", "prediction", "propfirm", "all"],
+        choices=["core", "validation", "prediction", "propfirm", "bias", "all"],
         help="Which module to run (default: all)"
     )
     parser.add_argument(
@@ -108,6 +108,17 @@ def run_propfirm(trades_df, output_dir: str):
     print(f"\n  ✓ Prop firm module completed in {time.time()-t0:.1f}s")
 
 
+def run_bias(df_1min, trades_df, output_dir: str):
+    import selection_bias as sb
+
+    print("\n" + "=" * 60)
+    print("  MODULE: Selection Bias Mitigation")
+    print("=" * 60)
+    t0 = time.time()
+    sb.run(df_1min, trades_df, output_dir=output_dir)
+    print(f"\n  ✓ Bias module completed in {time.time()-t0:.1f}s")
+
+
 def main():
     args = parse_args()
 
@@ -149,6 +160,9 @@ def main():
 
     if args.module in ("propfirm", "all"):
         run_propfirm(trades, args.output_dir)
+
+    if args.module in ("bias", "all"):
+        run_bias(df, trades, args.output_dir)
 
     print("\n" + "=" * 60)
     print(f"  ALL DONE — total time: {time.time()-t_start:.1f}s")
