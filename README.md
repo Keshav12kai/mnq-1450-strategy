@@ -38,6 +38,7 @@ mnq-1450-strategy/
 ├── advanced_validation.py    # Statistical validation suite
 ├── volatility_predictor.py   # ML volatility prediction & position sizing
 ├── propfirm_optimizer.py     # Prop firm challenge optimizer
+├── selection_bias.py         # Selection bias analysis (new)
 ├── run_all.py                # Single entry point CLI
 ├── requirements.txt          # Python dependencies
 └── README.md                 # This file
@@ -74,6 +75,7 @@ python run_all.py --csv data.csv --module core
 python run_all.py --csv data.csv --module validation
 python run_all.py --csv data.csv --module prediction
 python run_all.py --csv data.csv --module propfirm
+python run_all.py --csv data.csv --module bias        # selection bias analysis
 ```
 
 ### Custom Capital & Point Value
@@ -146,6 +148,67 @@ The KEY innovation — predicts the full 14:50-14:59 window range:
 - Expected cost to get funded
 - 6-month expected value calculation
 - Detailed top-3 analysis with multi-attempt probabilities
+
+### `selection_bias.py`
+Addresses the **multiple-comparisons / selection bias risk** introduced when
+scanning 381 entry windows and keeping only the top performers.  Three
+complementary methods:
+
+- **Walk-forward cross-validation**: Divides trading days into 4 equal folds.
+  In each fold, only prior data is used to identify the top-5 windows by
+  Sharpe; those same windows are then evaluated out-of-sample in the next
+  fold.  The IS→OOS Sharpe retention ratio quantifies how much of the
+  apparent edge survives in unseen data.
+- **Null distribution simulation**: Simulates 10,000 trials of 381 independent
+  "fair-coin" windows (zero-mean PnL, ~225 pseudo-trades each) and records
+  the best Sharpe and win-rate achievable by pure luck.  Answers: *"How
+  likely is WR ≥ 56 % or Sharpe ≥ 2.5 by chance alone?"*
+- **Shrinkage estimates**: Applies regression-to-the-mean shrinkage
+  (`sf = 1 / (1 + √n_windows / √n_trades)`) to deflate backtested metrics
+  toward a realistic forward expectation.  With 381 windows and 225 trades
+  each, the shrinkage factor is ≈ 0.43 — only ~43 % of the apparent edge
+  above the null baseline is expected to persist live.
+
+> ⚠️ **Selection Bias Warning**: Picking the top result from 381 candidates
+> will almost certainly yield at least one window with WR ≥ 56 % or
+> Sharpe ≥ 2.5 even if no real edge exists.  Always interpret backtest
+> rankings with the OOS walk-forward results and shrunk estimates in mind.
+
+---
+
+## ⚠️ Selection Bias Risk
+
+When scanning a large number of candidate windows and keeping the best
+performers, some results will appear strong purely due to random variation —
+this is the **multiple-comparisons problem** (also called *data dredging* or
+*p-hacking*).
+
+### Why it matters for this strategy
+
+| Scenario | Probability |
+|----------|-------------|
+| At least one of 381 windows has WR ≥ 56% by chance | ~100% |
+| At least one of 381 windows has Sharpe ≥ 2.5 by chance | ~95%+ |
+
+These probabilities are derived from the null-distribution simulation in
+`selection_bias.py`.  The key takeaway: **the observed rankings are
+expected rankings under pure chance** — they do not by themselves prove
+a real edge.
+
+### How to mitigate it
+
+1. **Walk-forward cross-validation** — if OOS performance closely tracks IS
+   performance across all folds, the edge is likely real.  A low
+   IS→OOS Sharpe retention ratio (< 50%) is a red flag.
+
+2. **Shrinkage** — apply the conservative shrunk estimates as your planning
+   baseline rather than the raw backtest numbers.
+
+3. **Extended out-of-sample period** — paper-trade or forward-test for at
+   least 3–6 months before committing real capital.
+
+4. **Consistency across sub-periods** — a genuine edge should appear in
+   most calendar years and market regimes, not just in aggregate.
 
 ---
 
