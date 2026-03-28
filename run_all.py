@@ -5,11 +5,12 @@ Usage:
     python run_all.py --csv path/to/data.csv [--module all] [--capital 10000] [--point-value 2]
 
 Modules:
-    core        — run core backtester
-    validation  — run advanced validation
-    prediction  — run volatility predictor
-    propfirm    — run prop firm optimizer
-    all         — run all modules (default)
+    core             — run core backtester
+    validation       — run advanced validation
+    prediction       — run volatility predictor
+    propfirm         — run prop firm optimizer
+    selection_bias   — run selection bias analysis & forward expectations
+    all              — run all modules (default)
 """
 
 import argparse
@@ -30,7 +31,7 @@ def parse_args():
     )
     parser.add_argument(
         "--module", type=str, default="all",
-        choices=["core", "validation", "prediction", "propfirm", "all"],
+        choices=["core", "validation", "prediction", "propfirm", "selection_bias", "all"],
         help="Which module to run (default: all)"
     )
     parser.add_argument(
@@ -108,6 +109,18 @@ def run_propfirm(trades_df, output_dir: str):
     print(f"\n  ✓ Prop firm module completed in {time.time()-t0:.1f}s")
 
 
+def run_selection_bias(trades_df, capital: float, point_value: float, output_dir: str):
+    import selection_bias_analysis as sba
+
+    print("\n" + "=" * 60)
+    print("  MODULE: Selection Bias Analysis")
+    print("=" * 60)
+    t0 = time.time()
+    sba.run(trades_df, initial_capital=capital, point_value=point_value,
+            output_dir=output_dir)
+    print(f"\n  ✓ Selection bias module completed in {time.time()-t0:.1f}s")
+
+
 def main():
     args = parse_args()
 
@@ -149,6 +162,9 @@ def main():
 
     if args.module in ("propfirm", "all"):
         run_propfirm(trades, args.output_dir)
+
+    if args.module in ("selection_bias", "all"):
+        run_selection_bias(trades, args.capital, args.point_value, args.output_dir)
 
     print("\n" + "=" * 60)
     print(f"  ALL DONE — total time: {time.time()-t_start:.1f}s")

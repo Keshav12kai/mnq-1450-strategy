@@ -33,14 +33,16 @@ The strategy trades the **14:50 ET candle** on MNQ:
 
 ```
 mnq-1450-strategy/
-├── config.py                 # Central configuration
-├── core_strategy.py          # Main backtester
-├── advanced_validation.py    # Statistical validation suite
-├── volatility_predictor.py   # ML volatility prediction & position sizing
-├── propfirm_optimizer.py     # Prop firm challenge optimizer
-├── run_all.py                # Single entry point CLI
-├── requirements.txt          # Python dependencies
-└── README.md                 # This file
+├── config.py                      # Central configuration
+├── core_strategy.py               # Main backtester
+├── advanced_validation.py         # Statistical validation suite
+├── volatility_predictor.py        # ML volatility prediction & position sizing
+├── propfirm_optimizer.py          # Prop firm challenge optimizer
+├── selection_bias_analysis.py     # Selection bias mitigation & forward expectations
+├── run_all.py                     # Single entry point CLI
+├── requirements.txt               # Python dependencies
+├── SELECTION_BIAS_ANALYSIS.md     # Selection bias methodology & realistic expectations
+└── README.md                      # This file
 ```
 
 ---
@@ -103,6 +105,27 @@ python run_all.py --csv data.csv --output-dir my_results/
 - 1-minute bars
 - ~1M+ rows covering multi-year history
 
+### `run_all.py`
+Single CLI entry point:
+```bash
+python run_all.py --csv data.csv [--module all|core|validation|prediction|propfirm|selection_bias]
+```
+
+---
+
+## Selection Bias & Realistic Expectations
+
+See **[SELECTION_BIAS_ANALYSIS.md](SELECTION_BIAS_ANALYSIS.md)** for the full analysis, including:
+- Identified bias risks (time-window mining, filter tuning, parameter sweeps)
+- Mitigation techniques (structural market rationale, IS/OOS split, walk-forward ML, sensitivity analysis)
+- Realistic forward-performance ranges (live Sharpe expected 0.7–1.5× backtest)
+- Prop-firm pass rate adjusted for OOS degradation: **55–75%** (vs 86.7% IS)
+
+To run the analysis and generate a results table with your actual data:
+```bash
+python run_all.py --csv Dataset_NQ_1min_2022_2025.csv --module selection_bias
+```
+
 ---
 
 ## Module Descriptions
@@ -146,6 +169,15 @@ The KEY innovation — predicts the full 14:50-14:59 window range:
 - Expected cost to get funded
 - 6-month expected value calculation
 - Detailed top-3 analysis with multi-attempt probabilities
+
+### `selection_bias_analysis.py`
+Dedicated selection bias mitigation and forward-performance estimation:
+- **Chronological 70/30 IS/OOS split** — honest out-of-sample performance estimate
+- **Parameter sensitivity** — candle-body threshold, Thursday filter, month filters
+- **Temporal stability** — per-year Sharpe to detect regime dependence
+- **Filter contribution** — how much each filter genuinely adds
+- **Forward expectation** — OOS + temporal-stability + regime haircuts
+- **Auto-generated markdown report** (`output/SELECTION_BIAS_RESULTS.md`)
 
 ---
 
