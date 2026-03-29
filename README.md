@@ -43,15 +43,16 @@ The strategy trades **MNQ (Micro Nasdaq Futures)** across **five intraday window
 
 ```
 mnq-1450-strategy/
-├── config.py                 # Central configuration
-├── core_strategy.py          # Main backtester
-├── advanced_validation.py    # Statistical validation suite
-├── volatility_predictor.py   # ML volatility prediction & position sizing
-├── propfirm_optimizer.py     # Prop firm challenge optimizer
-├── run_all.py                # Single entry point CLI
-├── requirements.txt          # Python dependencies
-├── STRATEGY_GUIDE.md         # ★ Full strategy reference, checklist & research findings
-└── README.md                 # This file
+├── config.py                    # Central configuration
+├── core_strategy.py             # Main backtester
+├── advanced_validation.py       # Statistical validation suite
+├── volatility_predictor.py      # ML volatility prediction & position sizing
+├── propfirm_optimizer.py        # Prop firm challenge optimizer
+├── run_all.py                   # Single entry point CLI
+├── v5_honest_validation.py      # ★ Colab notebook — honest walk-forward + permutation test
+├── requirements.txt             # Python dependencies
+├── STRATEGY_GUIDE.md            # ★ Full strategy reference, checklist & research findings
+└── README.md                    # This file
 ```
 
 ---
@@ -117,6 +118,36 @@ python run_all.py --csv data.csv --output-dir my_results/
 ---
 
 ## Module Descriptions
+
+### `v5_honest_validation.py` *(Google Colab or local)*
+
+The standalone honest-validation script. Upload your 1-minute MNQ CSV in Google Colab,
+or run locally with `--csv`, to get an end-to-end bias-controlled assessment in ~2–4 minutes:
+
+- **Section 1** — Walk-forward / out-of-sample test (60/40 train/test split, full minute-window scan)
+- **Section 2** — Worst-day analysis with equity curve (at 7 contracts)
+- **Section 3** — Window correlation matrix — measures clustering risk
+- **Section 4** — Filter validation (t-test for Thursday/June/October/body filters)
+- **Section 5** — Safe position sizing & prop firm Monte Carlo pass rates
+- **Section 6** — Permutation test against 10,000 random window selections
+- **Section 7** — Final scored summary with GO / CAUTION / NO-GO recommendation
+
+**Validated results (2022-12-26 → 2025-12-11, 923 trading days):**
+
+| Metric | Value |
+|--------|-------|
+| OOS Sharpe (user's 5 windows, avg) | 2.922 |
+| Permutation test p-value | < 0.0001 |
+| Mean inter-window correlation | 0.034 |
+| Max consecutive losing days | 5 |
+| Max safe contracts ($2K DD limit) | 6 |
+| Overall score | 6 / 7 — **🟢 GO** |
+
+Run it in [Google Colab](https://colab.research.google.com/) — upload your CSV when prompted —
+or locally:
+```bash
+python v5_honest_validation.py --csv path/to/data.csv
+```
 
 ### `config.py`
 Central configuration for all parameters:
