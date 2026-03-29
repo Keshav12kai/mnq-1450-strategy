@@ -1,8 +1,8 @@
 """
-core_strategy.py — Main Backtester for MNQ 14:50 Strategy
+core_strategy.py — Main Backtester for MNQ Multi-Window Strategy
 
-Entry:  close of 14:50 candle, direction = candle direction
-Exit:   close of 14:59 candle
+Entry:  close of entry candle, direction = candle direction
+Exit:   close of exit candle (per window definition)
 """
 
 import os
@@ -48,7 +48,7 @@ def smart_filter(row: pd.Series) -> bool:
         return True
     if row["month"] in config.SKIP_MONTHS:
         return True
-    body = abs(row["close_1450"] - row["open_1450"])
+    body = abs(row["entry_close"] - row["entry_open"])
     if body < config.MIN_CANDLE_BODY:
         return True
     return False
@@ -58,48 +58,56 @@ def smart_filter(row: pd.Series) -> bool:
 
 def extract_trades(df: pd.DataFrame) -> pd.DataFrame:
     """
-    For each trading day extract the 14:50 entry candle and 14:59 exit close.
-    Returns a DataFrame with one row per potential trade.
+    For each trading day and each window in config.TRADE_WINDOWS, extract the
+    entry candle and exit candle close.  Returns a DataFrame with one row per
+    potential trade (day × window).  Missing windows for a given day are skipped
+    gracefully.
     """
     records = []
     for date, grp in df.groupby("date"):
-        entry_row = grp[grp["time"] == config.ENTRY_TIME]
-        exit_row  = grp[grp["time"] == config.EXIT_TIME]
-        if entry_row.empty or exit_row.empty:
-            continue
-        e = entry_row.iloc[0]
-        x = exit_row.iloc[0]
-        direction = "LONG" if e["close"] >= e["open"] else "SHORT"
-        body = abs(e["close"] - e["open"])
-        pnl_long  = x["close"] - e["close"]   # points if long
-        pnl_short = e["close"] - x["close"]   # points if short
-        records.append({
-            "date":         date,
-            "weekday":      e["weekday"],
-            "month":        e["month"],
-            "open_1450":    e["open"],
-            "close_1450":   e["close"],
-            "high_1450":    e["high"],
-            "low_1450":     e["low"],
-            "volume_1450":  e["volume"],
-            "close_1459":   x["close"],
-            "direction":    direction,
-            "candle_body":  body,
-            "pnl_long_pts": pnl_long,
-            "pnl_short_pts": pnl_short,
-            # full window high/low (entries 14:50-14:59)
-            "window_high":  grp[(grp["time"] >= config.ENTRY_TIME) & (grp["time"] <= config.EXIT_TIME)]["high"].max(),
-            "window_low":   grp[(grp["time"] >= config.ENTRY_TIME) & (grp["time"] <= config.EXIT_TIME)]["low"].min(),
-        })
+        for window in config.TRADE_WINDOWS:
+            entry_time = window["entry_time"]
+            exit_time  = window["exit_time"]
+            entry_row  = grp[grp["time"] == entry_time]
+            exit_row   = grp[grp["time"] == exit_time]
+            if entry_row.empty or exit_row.empty:
+                continue
+            e = entry_row.iloc[0]
+            x = exit_row.iloc[0]
+            direction = "LONG" if e["close"] >= e["open"] else "SHORT"
+            body = abs(e["close"] - e["open"])
+            pnl_long  = x["close"] - e["close"]   # points if long
+            pnl_short = e["close"] - x["close"]   # points if short
+            records.append({
+                "date":          date,
+                "window_name":   window["name"],
+                "entry_time":    entry_time,
+                "exit_time":     exit_time,
+                "weekday":       e["weekday"],
+                "month":         e["month"],
+                "entry_open":    e["open"],
+                "entry_close":   e["close"],
+                "entry_high":    e["high"],
+                "entry_low":     e["low"],
+                "entry_volume":  e["volume"],
+                "exit_close":    x["close"],
+                "direction":     direction,
+                "candle_body":   body,
+                "pnl_long_pts":  pnl_long,
+                "pnl_short_pts": pnl_short,
+                # full window high/low
+                "window_high":   grp[(grp["time"] >= entry_time) & (grp["time"] <= exit_time)]["high"].max(),
+                "window_low":    grp[(grp["time"] >= entry_time) & (grp["time"] <= exit_time)]["low"].min(),
+            })
     trades = pd.DataFrame(records)
     if not trades.empty:
         trades["window_range"] = trades["window_high"] - trades["window_low"]
         # MAE (max adverse excursion)
         def _mae(r):
             if r["direction"] == "LONG":
-                return max(0.0, r["close_1450"] - r["window_low"])
+                return max(0.0, r["entry_close"] - r["window_low"])
             else:
-                return max(0.0, r["window_high"] - r["close_1450"])
+                return max(0.0, r["window_high"] - r["entry_close"])
         trades["mae"] = trades.apply(_mae, axis=1)
         trades["skip"] = trades.apply(smart_filter, axis=1)
     return trades
@@ -145,16 +153,17 @@ def run_backtest(
 
         results.append({
             "date":       row["date"],
+            "window_name": row.get("window_name", ""),
             "direction":  row["direction"] if direction == "both" else direction.upper(),
-            "entry":      row["close_1450"],
-            "exit":       row["close_1459"],
+            "entry":      row["entry_close"],
+            "exit":       row["exit_close"],
             "pts":        pts,
             "pnl":        pts * pv * contracts,
             "contracts":  contracts,
-            "open_1450":  row["open_1450"],
-            "high_1450":  row["high_1450"],
-            "low_1450":   row["low_1450"],
-            "close_1450": row["close_1450"],
+            "entry_open":  row["entry_open"],
+            "entry_high":  row["entry_high"],
+            "entry_low":   row["entry_low"],
+            "entry_close": row["entry_close"],
             "window_high": row["window_high"],
             "window_low":  row["window_low"],
         })
@@ -361,7 +370,7 @@ def print_comparison(results: dict):
 def plot_comparison_charts(results: dict, output_dir: str = "."):
     os.makedirs(output_dir, exist_ok=True)
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle("MNQ 14:50 Strategy — Comparison", fontsize=14, fontweight="bold")
+    fig.suptitle("MNQ Multi-Window Strategy — Comparison", fontsize=14, fontweight="bold")
 
     colors = {"long": "#26a69a", "short": "#ef5350", "both": "#42a5f5", "bh": "#ffa726"}
     labels = {"long": "Bullish Only", "short": "Bearish Only", "both": "Both", "bh": "Buy & Hold"}
@@ -476,8 +485,18 @@ def plot_last5_trades(trades_df: pd.DataFrame, df_1min: pd.DataFrame,
     for i, row in recent.iterrows():
         date_str = str(row["date"])
         day_data = df_1min[df_1min["date"].astype(str) == date_str].copy()
-        # Focus window 14:40 – 15:00
-        window = day_data[(day_data["time"] >= "14:40") & (day_data["time"] <= "15:00")].copy()
+        # Dynamic focus window: ±10 minutes around the trade's entry/exit times
+        entry_time = row.get("entry_time", config.ENTRY_TIME)
+        exit_time  = row.get("exit_time",  config.EXIT_TIME)
+        # Compute window start/end as HH:MM strings with 10-min padding
+        def _add_minutes(hhmm: str, delta: int) -> str:
+            h, m = int(hhmm[:2]), int(hhmm[3:])
+            total = h * 60 + m + delta
+            total = max(0, min(total, 23 * 60 + 59))
+            return f"{total // 60:02d}:{total % 60:02d}"
+        win_start = _add_minutes(entry_time, -10)
+        win_end   = _add_minutes(exit_time,  +10)
+        window = day_data[(day_data["time"] >= win_start) & (day_data["time"] <= win_end)].copy()
         if window.empty:
             continue
 
@@ -518,8 +537,8 @@ def plot_last5_trades(trades_df: pd.DataFrame, df_1min: pd.DataFrame,
         # Entry / exit markers
         times_list = window["time"].tolist()
         try:
-            ei = times_list.index(config.ENTRY_TIME)
-            xi = times_list.index(config.EXIT_TIME)
+            ei = times_list.index(entry_time)
+            xi = times_list.index(exit_time)
         except ValueError:
             plt.close(fig)
             continue
@@ -549,8 +568,9 @@ def plot_last5_trades(trades_df: pd.DataFrame, df_1min: pd.DataFrame,
             arrowprops=dict(arrowstyle="-", linestyle="dashed", color="yellow", lw=0.8, alpha=0.7)
         )
 
+        window_label = row.get("window_name", f"{entry_time}→{exit_time}")
         ax_c.set_title(
-            f"MNQ 14:50 Trade — {date_str}   [{direction_label}]",
+            f"MNQ Multi-Window Trade — {date_str}   [{direction_label}]   {window_label}",
             color="#d1d4dc", fontsize=10, pad=6
         )
         ax_c.set_ylabel("Price", color="#d1d4dc")

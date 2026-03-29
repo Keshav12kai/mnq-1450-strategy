@@ -1,5 +1,5 @@
 """
-config.py — Central Configuration for MNQ 14:50 Strategy
+config.py — Central Configuration for MNQ Multi-Window Strategy
 """
 
 # ── CSV Data ────────────────────────────────────────────────────────────────
@@ -14,9 +14,54 @@ POINT_VALUE = {
 DEFAULT_INSTRUMENT = "MNQ"
 DEFAULT_POINT_VALUE = POINT_VALUE[DEFAULT_INSTRUMENT]
 
-# ── Strategy Timing ──────────────────────────────────────────────────────────
+# ── Trade Windows ────────────────────────────────────────────────────────────
+# All times Eastern Time (ET).  Each window: entry at candle close, exit at candle close.
+TRADE_WINDOWS = [
+    {
+        "name":               "Window 1 — Mid-session rebalancing",
+        "entry_time":         "12:16",
+        "exit_time":          "12:27",
+        "hold_minutes":       11,
+        "conviction":         "medium",
+        "structural_reason":  "Mid-session rebalancing",
+    },
+    {
+        "name":               "Window 2 — Lunch-hour order flow",
+        "entry_time":         "12:51",
+        "exit_time":          "13:00",
+        "hold_minutes":       9,
+        "conviction":         "medium",
+        "structural_reason":  "Lunch-hour order flow",
+    },
+    {
+        "name":               "Window 3 — Early pre-close positioning",
+        "entry_time":         "13:55",
+        "exit_time":          "14:05",
+        "hold_minutes":       10,
+        "conviction":         "medium",
+        "structural_reason":  "Early pre-close positioning",
+    },
+    {
+        "name":               "Window 4 — Pre-close institutional re-balance",
+        "entry_time":         "14:50",
+        "exit_time":          "15:01",
+        "hold_minutes":       11,
+        "conviction":         "high",
+        "structural_reason":  "Pre-close institutional re-balance",
+    },
+    {
+        "name":               "Window 5 — Closing auction burst",
+        "entry_time":         "15:48",
+        "exit_time":          "15:58",
+        "hold_minutes":       10,
+        "conviction":         "high",
+        "structural_reason":  "Closing auction burst",
+    },
+]
+
+# ── Legacy aliases (point to Window 4 for backward compatibility) ─────────────
 ENTRY_TIME  = "14:50"          # enter at close of 14:50 candle
-EXIT_TIME   = "14:59"          # exit at close of 14:59 candle
+EXIT_TIME   = "15:01"          # exit at close of 15:01 candle
 
 # ── Smart Filters ────────────────────────────────────────────────────────────
 SKIP_THURSDAYS     = True
