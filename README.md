@@ -42,16 +42,20 @@ The strategy trades **1-minute candles** on MNQ:
 
 ### Supported Windows
 
-| Window | Entry → Exit (ET) | Structural Rationale | Tier |
-|--------|-------------------|----------------------|------|
-| ① 12:16→12:25 | 12:16 → 12:25 | Midday positioning | 2 |
-| ② 12:51→13:00 | 12:51 → 13:00 | Lunch-hour trend reset | 2 |
-| ③ 13:55→14:04 | 13:55 → 14:04 | Afternoon session open | 2 |
-| ④ **14:50→14:59** | 14:50 → 14:59 | **Pre-close institutional positioning** | 1 |
-| ⑤ **15:48→15:57** | 15:48 → 15:57 | **CBOE closing-auction volume surge** | 1 |
+> ⚠️ **These windows are illustrative examples, not empirically validated results.**
+> No market data (`data.csv`) is included in this repository.  The 14:50 window is the
+> original strategy hypothesis; the other four are structural candidates included so
+> you can see how the multi-window framework is configured.
+> **You must run `python run_all.py --csv your_data.csv --module bias` with your own
+> 1-minute MNQ CSV to discover which windows are actually robust in your data.**
 
-Tier-1 windows have a measurable structural reason (closing auction, pre-close order
-flow) and are therefore more likely to persist forward.
+| Window | Entry → Exit (ET) | Structural Rationale | Status |
+|--------|-------------------|----------------------|--------|
+| ① 12:16→12:25 | 12:16 → 12:25 | Midday positioning | Illustrative — validate with your data |
+| ② 12:51→13:00 | 12:51 → 13:00 | Lunch-hour trend reset | Illustrative — validate with your data |
+| ③ 13:55→14:04 | 13:55 → 14:04 | Afternoon session open | Illustrative — validate with your data |
+| ④ **14:50→14:59** | 14:50 → 14:59 | **Pre-close institutional positioning** | Original hypothesis |
+| ⑤ **15:48→15:57** | 15:48 → 15:57 | **CBOE closing-auction volume surge** | Illustrative — validate with your data |
 
 ---
 
@@ -82,6 +86,11 @@ you can still expect roughly **19 windows** to show Sharpe ≥ 2.0 purely by luc
 
 ### Key Results After Bias Controls
 
+> ⚠️ **The numbers below are illustrative estimates, not real backtest results.**
+> They are included to show the *kind* of degradation you should expect between
+> in-sample and out-of-sample performance once selection bias is corrected.
+> Run `selection_bias.py` with your own data to obtain real numbers.
+
 | Metric | In-Sample (raw) | OOS (bias-adjusted) |
 |--------|----------------|---------------------|
 | Avg Sharpe (top 5 windows) | ~2.7 | ~1.3–1.8 |
@@ -96,6 +105,12 @@ you can still expect roughly **19 windows** to show Sharpe ≥ 2.0 purely by luc
 
 ## Realistic Performance Expectations (Forward-Looking)
 
+> ⚠️ **All figures below are illustrative only — no market data is included in this
+> repository.**  They reflect typical ranges reported in the literature for short-term
+> intraday momentum strategies after selection-bias correction.  Your actual results
+> will depend entirely on your own data and the windows that survive OOS validation.
+> Run `python run_all.py --csv your_data.csv --module bias` to get real numbers.
+
 ### Single 14:50 Window (conservative, 1 contract)
 - ~6 trades per month (after filters)
 - Win rate: ~52–56%
@@ -109,15 +124,15 @@ you can still expect roughly **19 windows** to show Sharpe ≥ 2.0 purely by luc
 - Monthly P&L (1 ct): **~$250–400**
 
 ### Prop Firm (Apex, no daily limit, 5–7 contracts, multi-window)
-| Metric | Backtest (optimistic) | Bias-Adjusted (realistic) |
+| Metric | Backtest (optimistic, illustrative) | Bias-Adjusted (illustrative) |
 |--------|-----------------------|--------------------------|
 | Pass rate / attempt | 75% | ~55–65% |
 | 3-attempt pass rate | 98% | ~85–93% |
 | Avg days to pass | 13 | 15–20 |
 
-> **Bottom line:** The edge is real — OOS validation confirms it persists across
-> multiple independent time windows.  However, live performance will be 30–50%
-> below raw backtest numbers.  Plan accordingly.
+> **Bottom line:** The `selection_bias.py` framework is designed to measure whether
+> a real edge persists OOS.  Run it with your own CSV data first — do not rely on
+> the illustrative numbers above for live trading decisions.
 
 ---
 

@@ -21,16 +21,26 @@ ENTRY_HOLD_MINUTES = 9         # hold duration used across all windows
 
 # ── Multi-Window Configuration ───────────────────────────────────────────────
 # Each tuple: (entry_hour, entry_minute, exit_hour, exit_minute, label)
-# These are the top 5 windows discovered by the window scan (ET timestamps).
-# ⚠ Timezone note: these times are in EASTERN TIME (ET / New York).
+#
+# ⚠ IMPORTANT: These 5 windows are ILLUSTRATIVE EXAMPLES only.
+#   They have NOT been validated against real market data — no data.csv file
+#   is included in this repository.  The 14:50 window is the original strategy
+#   hypothesis; the other 4 are plausible structural candidates listed for
+#   reference.
+#
+#   You MUST run `python run_all.py --csv your_data.csv --module bias` with
+#   your own 1-minute MNQ CSV to discover which windows are actually robust
+#   in your data.
+#
+# ⚠ Timezone note: timestamps are EASTERN TIME (ET / New York).
 #   In TradingView/Pine Script, verify your chart is set to "America/New_York"
 #   so that 14:50 ET appears as 14:50 on the chart, NOT 13:50 (CT) or 15:50.
 MULTI_WINDOWS = [
-    (12, 16, 12, 25, "12:16→12:25"),
-    (12, 51, 13,  0, "12:51→13:00"),
-    (13, 55, 14,  4, "13:55→14:04"),
-    (14, 50, 14, 59, "14:50→14:59"),   # original window (pre-close positioning)
-    (15, 48, 15, 57, "15:48→15:57"),   # closing auction window (CBOE volume spike)
+    (12, 16, 12, 25, "12:16→12:25"),   # illustrative — validate with your data
+    (12, 51, 13,  0, "12:51→13:00"),   # illustrative — validate with your data
+    (13, 55, 14,  4, "13:55→14:04"),   # illustrative — validate with your data
+    (14, 50, 14, 59, "14:50→14:59"),   # original hypothesis (pre-close positioning)
+    (15, 48, 15, 57, "15:48→15:57"),   # illustrative — closing auction candidate
 ]
 
 # ── Smart Filters ────────────────────────────────────────────────────────────
