@@ -1,5 +1,5 @@
 """
-advanced_validation.py — Statistical Validation Suite for MNQ 14:50 Strategy
+advanced_validation.py — Statistical Validation Suite for MNQ Multi-Window Strategy
 
 Includes:
   - Monte Carlo Simulation (10,000 paths)

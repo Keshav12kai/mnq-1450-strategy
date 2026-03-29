@@ -1,7 +1,7 @@
 """
 volatility_predictor.py — Volatility Prediction & Prediction-Based Position Sizing
 
-KEY INNOVATION: Predict the full 14:50-14:59 window range (not just entry candle range)
+KEY INNOVATION: Predict the full multi-window range (not just entry candle range)
 and size positions accordingly to avoid daily loss limit breaches.
 
 The winning configuration: Ensemble model at 60% safety buffer → 86.7% prop firm pass rate.
@@ -27,25 +27,37 @@ warnings.filterwarnings("ignore")
 
 def build_features(df: pd.DataFrame, trades: pd.DataFrame) -> pd.DataFrame:
     """
-    Build all features available BEFORE 14:50 for each trading day.
+    Build all features available BEFORE each trade's entry time for each trading day.
     Returns a feature DataFrame aligned with trades index.
     """
     feature_rows = []
 
     for _, trade_row in trades.iterrows():
-        date    = trade_row["date"]
-        day_df  = df[df["date"] == date].copy()
-        day_df  = day_df.sort_values("time").reset_index(drop=True)
+        date       = trade_row["date"]
+        entry_time = trade_row.get("entry_time", config.ENTRY_TIME)
+        day_df     = df[df["date"] == date].copy()
+        day_df     = day_df.sort_values("time").reset_index(drop=True)
 
         def _get_window(start, end):
             return day_df[(day_df["time"] >= start) & (day_df["time"] < end)]
 
-        last5   = _get_window("14:45", "14:50")
-        last10  = _get_window("14:40", "14:50")
-        last30  = _get_window("14:20", "14:50")
+        def _add_minutes(hhmm: str, delta: int) -> str:
+            h, m = int(hhmm[:2]), int(hhmm[3:])
+            total = h * 60 + m + delta
+            total = max(0, min(total, 23 * 60 + 59))
+            return f"{total // 60:02d}:{total % 60:02d}"
+
+        entry_minus5  = _add_minutes(entry_time, -5)
+        entry_minus10 = _add_minutes(entry_time, -10)
+        entry_minus30 = _add_minutes(entry_time, -30)
+        entry_minus1  = _add_minutes(entry_time, -1)
+
+        last5   = _get_window(entry_minus5,  entry_time)
+        last10  = _get_window(entry_minus10, entry_time)
+        last30  = _get_window(entry_minus30, entry_time)
         morning = _get_window("09:30", "12:00")
-        aftn    = _get_window("12:00", "14:50")
-        full    = _get_window("09:30", "14:50")
+        aftn    = _get_window("12:00", entry_time)
+        full    = _get_window("09:30", entry_time)
 
         def _rng(w): return (w["high"] - w["low"]).values if len(w) else np.array([0.0])
         def _vol(w): return w["volume"].values  if len(w) else np.array([0.0])
@@ -57,12 +69,12 @@ def build_features(df: pd.DataFrame, trades: pd.DataFrame) -> pd.DataFrame:
         ra  = _rng(aftn);    va  = _vol(aftn)
         rf  = _rng(full);    vf  = _vol(full)
 
-        # VWAP distance
+        # VWAP distance (candle just before entry)
         vwap_dist = 0.0
         if "Vwap_RTH" in day_df.columns:
-            vwap_row = day_df[day_df["time"] == "14:49"]
+            vwap_row = day_df[day_df["time"] == entry_minus1]
             if not vwap_row.empty and not pd.isna(vwap_row["Vwap_RTH"].iloc[0]):
-                vwap_dist = abs(trade_row["close_1450"] - vwap_row["Vwap_RTH"].iloc[0])
+                vwap_dist = abs(trade_row["entry_close"] - vwap_row["Vwap_RTH"].iloc[0])
 
         row = {
             # last5
@@ -97,9 +109,9 @@ def build_features(df: pd.DataFrame, trades: pd.DataFrame) -> pd.DataFrame:
             # vwap
             "vwap_dist":          vwap_dist,
             # price level
-            "price_level":        trade_row["close_1450"],
+            "price_level":        trade_row["entry_close"],
             # entry candle
-            "entry_range":        trade_row["high_1450"] - trade_row["low_1450"],
+            "entry_range":        trade_row["entry_high"] - trade_row["entry_low"],
             "entry_body":         trade_row["candle_body"],
             # calendar
             "weekday":            trade_row["weekday"],

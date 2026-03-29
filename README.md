@@ -1,4 +1,4 @@
-# MNQ 14:50 Strategy — Backtesting & Prop Firm Optimization System
+# MNQ Multi-Window Strategy — Backtesting & Prop Firm Optimization System
 
 A complete, production-ready MNQ (Micro Nasdaq Futures) trading strategy backtesting and prop firm challenge optimization system.
 
@@ -11,14 +11,19 @@ A complete, production-ready MNQ (Micro Nasdaq Futures) trading strategy backtes
 
 ## Strategy Overview
 
-The strategy trades the **14:50 ET candle** on MNQ:
+The strategy trades **MNQ (Micro Nasdaq Futures)** across **five intraday windows** (all times ET):
 
-| Parameter | Value |
-|-----------|-------|
-| Entry | Close of 14:50 candle |
-| Direction | Follow candle (Bullish → LONG, Bearish → SHORT) |
-| Exit | Close of 14:59 candle |
-| Instrument | MNQ ($2/point) or NQ ($20/point) |
+| # | Entry (candle close) | Exit (candle close) | Hold | Conviction | Structural Reason |
+|---|---------------------|---------------------|------|------------|-------------------|
+| 1 | 12:16 | 12:27 | 11 min | Medium | Mid-session rebalancing |
+| 2 | 12:51 | 13:00 | 9 min | Medium | Lunch-hour order flow |
+| 3 | 13:55 | 14:05 | 10 min | Medium | Early pre-close positioning |
+| 4 | **14:50** | **15:01** | **11 min** | **★ High** | **Pre-close institutional re-balance** |
+| 5 | **15:48** | **15:58** | **10 min** | **★ High** | **Closing auction burst** |
+
+**Direction**: Follow the 1-minute entry candle (Bullish → LONG, Bearish → SHORT)
+
+**Instrument**: MNQ ($2/point) or NQ ($20/point)
 
 ### Smart Filter Rules
 - **Skip Thursdays** — historically weaker performance
@@ -138,7 +143,7 @@ Statistical validation suite:
 - **Statistical Edge**: t-test, bootstrap 95% CI, skewness/kurtosis, runs test
 
 ### `volatility_predictor.py`
-The KEY innovation — predicts the full 14:50-14:59 window range:
+The KEY innovation — predicts the full multi-window range:
 - 5 prediction models: EWMA, P75, Feature Scaling, Gradient Boosting, **Ensemble**
 - Walk-forward ML (no lookahead bias)
 - Positions sized as: `contracts = (daily_limit / (predicted_range × $2)) × safety_buffer`
@@ -158,13 +163,14 @@ The KEY innovation — predicts the full 14:50-14:59 window range:
 ## Daily Trading Playbook
 
 1. Check smart filters: Is today Thursday? Is it June or October?
-2. At 14:50 ET, observe the 1-minute candle
-3. Measure candle body: if < 3.0 points, **skip**
-4. Get today's predicted window range from volatility model
-5. Calculate contracts: `(daily_limit / (predicted_range × $2)) × 60%`
-6. Enter at the **close** of the 14:50 candle in the candle's direction
-7. Exit at the **close** of the 14:59 candle
-8. Monitor drawdown: reduce contracts at 3%/6%/8% DD from peak
+2. For each active window (check STRATEGY_GUIDE for conviction ratings):
+   - At the window's entry time ET, observe the 1-minute candle
+   - Measure candle body: if < 3.0 points, **skip this window**
+   - Get today's predicted window range from volatility model
+   - Calculate contracts: `(daily_limit / (predicted_range × $2)) × 60%`
+   - Enter at the **close** of the entry candle in the candle's direction
+   - Exit at the **close** of the exit candle
+3. Monitor drawdown: reduce contracts at 3%/6%/8% DD from peak
 
 ---
 
@@ -236,7 +242,7 @@ Full list in `config.py`.
 | `last10_total_range` | 6.2% |
 | Other features | 36.9% |
 
-The 30-bar lookback average range dominates — recent volatility is highly predictive of the 14:50-14:59 window range.
+The 30-bar lookback average range dominates — recent volatility is highly predictive of the multi-window range.
 
 ---
 
@@ -244,8 +250,8 @@ The 30-bar lookback average range dominates — recent volatility is highly pred
 
 | Metric | Value |
 |--------|-------|
-| Entry candle (14:50) average range | ~9 pts |
-| Full window (14:50-14:59) average range | ~32 pts |
+| Entry candle average range | ~9 pts |
+| Full window (multi-window) average range | ~32 pts |
 | Multiplier | 3.5× |
 
 Previous versions sized positions on the entry candle range, causing frequent daily limit breaches. This system sizes on the **predicted full window range**, eliminating that failure mode.

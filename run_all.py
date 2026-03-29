@@ -1,5 +1,5 @@
 """
-run_all.py — Single Entry Point for MNQ 14:50 Strategy System
+run_all.py — Single Entry Point for MNQ Multi-Window Strategy System
 
 Usage:
     python run_all.py --csv path/to/data.csv [--module all] [--capital 10000] [--point-value 2]
@@ -22,7 +22,7 @@ import config
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="MNQ 14:50 Strategy Backtesting & Prop Firm Optimizer"
+        description="MNQ Multi-Window Strategy Backtesting & Prop Firm Optimizer"
     )
     parser.add_argument(
         "--csv", type=str, default=config.CSV_PATH,
@@ -120,7 +120,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     print("\n" + "=" * 60)
-    print("  MNQ 14:50 STRATEGY SYSTEM")
+    print("  MNQ MULTI-WINDOW STRATEGY SYSTEM")
     print("=" * 60)
     print(f"  CSV:         {args.csv}")
     print(f"  Capital:     ${args.capital:,.0f}")
