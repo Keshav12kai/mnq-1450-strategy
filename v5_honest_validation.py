@@ -10,6 +10,7 @@
 
 import os
 import io
+import time
 import warnings
 import itertools
 import numpy as np
@@ -79,49 +80,65 @@ print(f"✅ Loaded {len(df_all):,} rows | "
       f"{df_all['date'].nunique()} trading days | "
       f"{df_all['timestamp'].min().date()} → {df_all['timestamp'].max().date()}")
 
+t_total_start = time.time()
+print("\n⏱️ ESTIMATED RUNTIME (with vectorized engine)")
+print("  Section 1 (Walk-Forward Scan)   ~30-90 sec")
+print("  Section 2 (Worst-Day Analysis)  < 5 sec")
+print("  Section 3 (Correlation)         < 5 sec")
+print("  Section 4 (Filter Validation)   < 5 sec")
+print("  Section 5 (Position Sizing)     ~10-20 sec")
+print("  Section 6 (Permutation Test)    ~30-90 sec")
+print("  Section 7 (Summary)             < 1 sec")
+print("  ─────────────────────────────────────────")
+print("  TOTAL ESTIMATE: ~2-4 minutes")
+
 # =============================================================================
 # CORE TRADE GENERATION
 # =============================================================================
 def get_trades_for_window(df, entry_h, entry_m, exit_h, exit_m,
                            skip_thu=True, skip_jun=True, skip_oct=True,
                            min_body=MIN_BODY):
-    """Return a list of trade dicts for a single (entry, exit) window."""
-    trades = []
-    days = df["date"].unique()
-    for day in days:
-        ddf = df[df["date"] == day]
-        # calendar filters
-        first_row = ddf.iloc[0]
-        if skip_thu and first_row["weekday"] == 3:
-            continue
-        if skip_jun and first_row["month"] == 6:
-            continue
-        if skip_oct and first_row["month"] == 10:
-            continue
-        # entry & exit bars
-        entry_bar = ddf[(ddf["hour"] == entry_h) & (ddf["minute"] == entry_m)]
-        exit_bar  = ddf[(ddf["hour"] == exit_h)  & (ddf["minute"] == exit_m)]
-        if entry_bar.empty or exit_bar.empty:
-            continue
-        ec  = entry_bar.iloc[0]["close"]
-        eo  = entry_bar.iloc[0]["open"]
-        exc = exit_bar.iloc[0]["close"]
-        body = abs(ec - eo)
-        if body < min_body:
-            continue
-        direction = 1 if ec > eo else -1   # +1 long / -1 short
-        pnl_pts   = direction * (exc - ec)
-        trades.append({
-            "date":      day,
-            "entry_h":   entry_h,
-            "entry_m":   entry_m,
-            "exit_h":    exit_h,
-            "exit_m":    exit_m,
-            "direction": direction,
-            "pnl_pts":   pnl_pts,
-            "body":      body,
-        })
-    return pd.DataFrame(trades)
+    """Return trades for a single (entry, exit) window — vectorized for speed."""
+    empty = pd.DataFrame(columns=["date","entry_h","entry_m","exit_h","exit_m",
+                                  "direction","pnl_pts","body"])
+    entry_bars = df[(df["hour"] == entry_h) & (df["minute"] == entry_m)]
+    exit_bars  = df[(df["hour"] == exit_h)  & (df["minute"] == exit_m)]
+    if entry_bars.empty or exit_bars.empty:
+        return empty
+    # One bar per date (safety for duplicate timestamps)
+    eb = entry_bars.drop_duplicates(subset="date", keep="first").set_index("date")
+    xb = exit_bars.drop_duplicates(subset="date", keep="first").set_index("date")
+    merged = eb[["open", "close", "weekday", "month"]].join(
+        xb[["close"]].rename(columns={"close": "exit_close"}), how="inner"
+    )
+    if merged.empty:
+        return empty
+    # Calendar filters
+    if skip_thu:
+        merged = merged[merged["weekday"] != 3]
+    if skip_jun:
+        merged = merged[merged["month"] != 6]
+    if skip_oct:
+        merged = merged[merged["month"] != 10]
+    # Body filter
+    merged["body"] = (merged["close"] - merged["open"]).abs()
+    if min_body > 0:
+        merged = merged[merged["body"] >= min_body]
+    if merged.empty:
+        return empty
+    # Direction & P&L
+    merged["direction"] = np.where(merged["close"] > merged["open"], 1, -1)
+    merged["pnl_pts"]   = merged["direction"] * (merged["exit_close"] - merged["close"])
+    return pd.DataFrame({
+        "date":      merged.index,
+        "entry_h":   entry_h,
+        "entry_m":   entry_m,
+        "exit_h":    exit_h,
+        "exit_m":    exit_m,
+        "direction": merged["direction"].values,
+        "pnl_pts":   merged["pnl_pts"].values,
+        "body":      merged["body"].values,
+    })
 
 
 def window_stats(trades_df, contracts=1):
@@ -160,6 +177,7 @@ print(f"✅ User windows loaded: "
 print("\n" + "═"*70)
 print("  SECTION 1 — WALK-FORWARD / OUT-OF-SAMPLE TEST")
 print("═"*70)
+t_sec1 = time.time()
 
 all_days = sorted(df_all["date"].unique())
 split_idx = int(len(all_days) * 0.60)
@@ -174,9 +192,10 @@ print(f"  Test set     : {len(test_days)} days  "
       f"({min(test_days)} → {max(test_days)})")
 
 # --- Scan ALL windows on TRAINING data ---
-print("\n  🔍 Scanning all minute windows on TRAINING data (this may take ~30s)...")
+print("\n  🔍 Scanning all minute windows on TRAINING data...")
 
 candidate_results = []
+scan_count = 0
 for entry_h in range(9, 16):
     for entry_m in range(0, 60):
         for hold in range(5, 16):
@@ -186,6 +205,7 @@ for entry_h in range(9, 16):
             exit_m   = total_m %  60
             if exit_h > 15 or (exit_h == 15 and exit_m > 59):
                 continue
+            scan_count += 1
             trades = get_trades_for_window(df_train, entry_h, entry_m, exit_h, exit_m)
             if len(trades) < 10:
                 continue
@@ -199,6 +219,11 @@ for entry_h in range(9, 16):
                 "label": f"{entry_h:02d}:{entry_m:02d}→{exit_h:02d}:{exit_m:02d}",
                 **stats
             })
+    print(f"    ... scanned hour {entry_h}:xx ({scan_count} windows so far, "
+          f"{time.time()-t_sec1:.0f}s elapsed)")
+
+print(f"  ✅ Scanned {scan_count} windows in {time.time()-t_sec1:.1f}s, "
+      f"found {len(candidate_results)} with ≥10 trades")
 
 cand_df = pd.DataFrame(candidate_results).sort_values("sharpe", ascending=False)
 top5_train = cand_df.head(5)
@@ -258,12 +283,15 @@ for label, trades_all in all_user_trades.items():
               f"OOS Sharpe={so['sharpe']:.3f} WR={so['win_rate']:.1%} | "
               f"Δ={so['sharpe']-si['sharpe']:+.3f}")
 
+print(f"\n  ⏱️ Section 1 completed in {time.time()-t_sec1:.1f}s")
+
 # =============================================================================
 # SECTION 2 — WORST-DAY ANALYSIS
 # =============================================================================
 print("\n" + "═"*70)
 print("  SECTION 2 — WORST-DAY ANALYSIS  (7 contracts)")
 print("═"*70)
+t_sec2 = time.time()
 
 # Build daily P&L per window and combined
 daily_pnl_by_window = {}
@@ -340,6 +368,7 @@ plt.tight_layout()
 plt.savefig("outputs/worst_day_analysis.png", dpi=150)
 plt.show()
 print("  📊 Chart saved → outputs/worst_day_analysis.png")
+print(f"  ⏱️ Section 2 completed in {time.time()-t_sec2:.1f}s")
 
 # =============================================================================
 # SECTION 3 — WINDOW CORRELATION ANALYSIS
@@ -347,6 +376,7 @@ print("  📊 Chart saved → outputs/worst_day_analysis.png")
 print("\n" + "═"*70)
 print("  SECTION 3 — WINDOW CORRELATION ANALYSIS")
 print("═"*70)
+t_sec3 = time.time()
 
 # Only look at days where BOTH windows traded (non-zero)
 window_labels = list(daily_matrix.columns)
@@ -395,6 +425,7 @@ np.fill_diagonal(avg_corr, np.nan)
 mean_corr = np.nanmean(avg_corr)
 print(f"\n  Mean inter-window correlation: {mean_corr:.3f} "
       f"({'🔴 high — losses cluster!' if mean_corr > 0.5 else '🟡 moderate' if mean_corr > 0.2 else '🟢 low — good diversification'})")
+print(f"  ⏱️ Section 3 completed in {time.time()-t_sec3:.1f}s")
 
 # =============================================================================
 # SECTION 4 — FILTER VALIDATION
@@ -403,6 +434,7 @@ print("\n" + "═"*70)
 print("  SECTION 4 — FILTER VALIDATION")
 print("═"*70)
 print("  Testing whether each filter is justified by data, or might be overfit.\n")
+t_sec4 = time.time()
 
 filter_tests = [
     ("Skip Thursday",    {"skip_thu": True},  {"skip_thu": False}),
@@ -461,12 +493,15 @@ for filter_name, with_kw, without_kw in filter_tests:
     print(f"     t-test p-value: {p_val:.4f}")
     print(f"     Verdict: {verdict}\n")
 
+print(f"  ⏱️ Section 4 completed in {time.time()-t_sec4:.1f}s")
+
 # =============================================================================
 # SECTION 5 — SAFE POSITION SIZING
 # =============================================================================
 print("\n" + "═"*70)
 print("  SECTION 5 — SAFE POSITION SIZING")
 print("═"*70)
+t_sec5 = time.time()
 
 # 1-contract worst day
 worst_day_1ct = daily_combined.min() / DEFAULT_CONTRACTS   # rescale to 1 contract
@@ -518,14 +553,15 @@ for label, cts in [
     marker = "🟢" if rate >= 0.70 else ("🟡" if rate >= 0.50 else "🔴")
     print(f"  {label:<25} {cts:>10}  {rate:>10.1%} {marker}")
 
+print(f"\n  ⏱️ Section 5 completed in {time.time()-t_sec5:.1f}s")
+
 # =============================================================================
 # SECTION 6 — PERMUTATION / RANDOMNESS TEST
 # =============================================================================
 print("\n" + "═"*70)
 print("  SECTION 6 — PERMUTATION / RANDOMNESS TEST")
 print("═"*70)
-print("  Generating 10,000 random window selections to test if your strategy")
-print("  beats random luck...")
+t_sec6 = time.time()
 
 def combined_sharpe_for_windows(df, windows):
     """Combined Sharpe of a list of (entry_h, entry_m, exit_h, exit_m) windows."""
@@ -542,9 +578,10 @@ def combined_sharpe_for_windows(df, windows):
 actual_sharpe = combined_sharpe_for_windows(df_all, USER_WINDOWS)
 print(f"\n  User's 5-window combined Sharpe: {actual_sharpe:.4f}")
 
-# Random sampling
-rng_perm = np.random.default_rng(0)
-random_sharpes = []
+# Pre-compute trades for ALL possible windows (for fast permutation lookup)
+print("  ⚙️ Pre-computing trades for all possible windows...")
+t_cache = time.time()
+window_pnl_cache = {}
 all_possible_windows = []
 for eh in range(9, 16):
     for em in range(0, 60):
@@ -553,19 +590,29 @@ for eh in range(9, 16):
             xh, xm  = total_m // 60, total_m % 60
             if xh > 15 or (xh == 15 and xm > 59):
                 continue
-            all_possible_windows.append((eh, em, xh, xm))
+            key = (eh, em, xh, xm)
+            all_possible_windows.append(key)
+            t = get_trades_for_window(df_all, *key)
+            if len(t) >= 20:
+                window_pnl_cache[key] = t["pnl_pts"].values * POINT_VALUE
 
-all_possible_windows = np.array(all_possible_windows)
-n_possible = len(all_possible_windows)
-print(f"  Total possible windows: {n_possible}")
+cached_keys = list(window_pnl_cache.keys())
+n_cached = len(cached_keys)
+print(f"  ✅ Pre-computed {n_cached} valid windows (of {len(all_possible_windows)} total) "
+      f"in {time.time()-t_cache:.1f}s")
+
+# Random sampling using pre-computed cache
 print(f"  Running {N_SIMS:,} random selections of 5 windows each...")
-
+rng_perm = np.random.default_rng(0)
+random_sharpes = []
 for i in range(N_SIMS):
-    idx  = rng_perm.choice(n_possible, size=5, replace=False)
-    wins = [tuple(all_possible_windows[j]) for j in idx]
-    sh   = combined_sharpe_for_windows(df_all, wins)
-    if not np.isnan(sh):
+    idx = rng_perm.choice(n_cached, size=5, replace=False)
+    all_pnl = np.concatenate([window_pnl_cache[cached_keys[j]] for j in idx])
+    if len(all_pnl) >= 20:
+        sh = (all_pnl.mean() / all_pnl.std(ddof=1)) * np.sqrt(252)
         random_sharpes.append(sh)
+    if (i + 1) % 2500 == 0:
+        print(f"    ... {i+1:,}/{N_SIMS:,} ({(i+1)/N_SIMS*100:.0f}%)")
 
 random_sharpes = np.array(random_sharpes)
 p_value = (random_sharpes >= actual_sharpe).mean()
@@ -604,6 +651,7 @@ plt.tight_layout()
 plt.savefig("outputs/permutation_test.png", dpi=150)
 plt.show()
 print("  📊 Chart saved → outputs/permutation_test.png")
+print(f"  ⏱️ Section 6 completed in {time.time()-t_sec6:.1f}s")
 
 # =============================================================================
 # SECTION 7 — FINAL SUMMARY & RECOMMENDATION
@@ -718,4 +766,8 @@ print()
 print("═"*70)
 print("  v5_honest_validation.py complete — all results from YOUR data.")
 print("  Charts saved in outputs/")
+total_elapsed = time.time() - t_total_start
+minutes = int(total_elapsed // 60)
+seconds = int(total_elapsed % 60)
+print(f"  ⏱️ Total runtime: {minutes}m {seconds}s")
 print("═"*70)
