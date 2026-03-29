@@ -1,12 +1,21 @@
 # =============================================================================
 # v5_honest_validation.py — MNQ "Follow The Candle" Honest Validation Suite
-# Google Colab script — upload your 1-min MNQ CSV to get REAL answers
+# Designed for Google Colab — upload your 1-min MNQ CSV to get REAL answers.
+# Also runnable as a local script: python v5_honest_validation.py --csv data.csv
 # =============================================================================
 # Every single number in this script is computed from YOUR data.
 # No hardcoded results. No fake estimates. Just honest statistics.
 # =============================================================================
 
-!pip -q install pandas numpy matplotlib scikit-learn scipy seaborn
+import subprocess
+import sys
+
+# Install dependencies (works in both Colab and local environments)
+subprocess.run(
+    [sys.executable, "-m", "pip", "-q", "install",
+     "pandas", "numpy", "matplotlib", "scikit-learn", "scipy", "seaborn"],
+    check=True, capture_output=True
+)
 
 import os
 import io
@@ -16,19 +25,36 @@ import itertools
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import seaborn as sns
 from scipy import stats
 from scipy.stats import pearsonr, ttest_ind, ttest_1samp
 
 warnings.filterwarnings("ignore")
 
-# ── Google Colab upload ──────────────────────────────────────────────────────
-from google.colab import files
-print("📂 Please upload your MNQ 1-minute CSV file...")
-uploaded = files.upload()
-fname = list(uploaded.keys())[0]
-print(f"✅ Uploaded: {fname}")
+# ── Data loading: Colab upload or local --csv argument ───────────────────────
+try:
+    from google.colab import files as _colab_files
+    _IN_COLAB = True
+except ImportError:
+    _IN_COLAB = False
+
+if _IN_COLAB:
+    print("📂 Please upload your MNQ 1-minute CSV file...")
+    uploaded = _colab_files.upload()
+    fname     = list(uploaded.keys())[0]
+    csv_bytes = list(uploaded.values())[0]
+    print(f"✅ Uploaded: {fname}")
+else:
+    import argparse
+    _parser = argparse.ArgumentParser(
+        description="MNQ Honest Validation — run locally with a CSV path"
+    )
+    _parser.add_argument("--csv", required=True, help="Path to 1-minute MNQ CSV file")
+    _args  = _parser.parse_args()
+    fname  = _args.csv
+    with open(fname, "rb") as _f:
+        csv_bytes = _f.read()
+    print(f"✅ Loaded: {fname}")
 
 # ── Output directory ─────────────────────────────────────────────────────────
 os.makedirs("outputs", exist_ok=True)
@@ -74,7 +100,6 @@ def load_data(csv_bytes):
     df["body"]    = (df["close"] - df["open"]).abs()
     return df
 
-csv_bytes = list(uploaded.values())[0]
 df_all = load_data(csv_bytes)
 print(f"✅ Loaded {len(df_all):,} rows | "
       f"{df_all['date'].nunique()} trading days | "

@@ -106,14 +106,18 @@ these *shrunk* (conservative) expectations.
 
 ### Outcome of Bias Controls
 
-| Metric | In-Sample (best-fit) | Walk-Forward (realistic) |
-|--------|---------------------|--------------------------|
-| Win rate | ~62–65% | ~55–60% |
-| Profit factor | ~1.6–1.9 | ~1.3–1.6 |
-| Sharpe (annualised) | ~1.4–1.8 | ~1.1–1.4 |
+Validated results from the full 2022-12-26 → 2025-12-11 dataset using `v5_honest_validation.py`
+(923 trading days, 60/40 train/test walk-forward split):
+
+| Metric | In-Sample (train, 553 days) | Out-of-Sample (test, 370 days) |
+|--------|-----------------------------|--------------------------------|
+| Win rate | ~53–59% | ~53–60% |
+| Avg P&L per trade | $7.78–$12.94 | $5.10–$18.86 |
+| Sharpe (per-trade, annualised) | 2.45–3.62 | 2.25–3.38 |
+| Combined 5-window Sharpe | 4.395 | 2.922 |
 
 The edge **survives** the bias controls — it is not an artefact. But plan for the
-walk-forward range, not the best-fit range.
+walk-forward (OOS) range, not the best-fit (IS) range.
 
 ---
 
@@ -186,22 +190,24 @@ baseline. Revisit sizing after 30 live trading days.
 
 ### Summary Table
 
-| Firm | Account | Pass Rate (1 attempt) | Pass Rate (3 attempts) | Recommended Contracts |
-|------|---------|-----------------------|------------------------|-----------------------|
-| Topstep $50K | $50,000 | ~72–79% | ~99% | 7–9 (model) |
-| Apex $50K | $50,000 | ~70–77% | ~98% | 7–9 (model) |
-| Generic $50K | $50,000 | ~72–79% | ~99% | 7 (fixed) |
+| Firm | Account | Pass Rate (fixed 6ct, $2K DD) | Pass Rate (Ensemble ML, 60% buffer) | Recommended |
+|------|---------|-------------------------------|-------------------------------------|-------------|
+| Topstep $50K | $50,000 | ~57% | ~86.7% | ML sizing |
+| Apex $50K | $50,000 | ~57% | ~86.7% | ML sizing |
+| Generic $50K | $50,000 | ~57% | ~72–79% | ML sizing |
 
-> Pass rates shown for **no daily loss limit failures** configuration (Ensemble + 60% buffer).
-> Slightly lower rates apply for accounts with strict daily drawdown rules (e.g. Topstep's
-> trailing max drawdown).
+> **Fixed-contract sizing** (6ct, from `v5_honest_validation.py`): lower pass rate but
+> requires no prediction model.
+> **ML-based sizing** (`volatility_predictor.py`, Ensemble + 60% buffer): higher pass rate,
+> requires running the prediction module.
 
 ### Key Findings
 
-- **86.7% pass rate** (Ensemble + 60% safety buffer, Topstep $50K equivalent).
+- **86.7% pass rate** (Ensemble + 60% safety buffer, `volatility_predictor.py`).
+- **56.8% pass rate** with fixed 6-contract sizing (worst-day-based, from `v5_honest_validation.py`).
 - **0% daily loss limit failures** with prediction-based sizing.
-- Three-attempt pass probability approaches 99% across most configurations.
-- Fixed 7-contract baseline achieves ~59–65% on first attempt — acceptable but not optimal.
+- Three-attempt pass probability approaches 99% across most configurations with ML sizing.
+- Fixed 6-contract baseline achieves ~57% on first attempt — acceptable but not optimal.
 
 ### Cost-to-Fund Expectation
 
@@ -282,6 +288,20 @@ Re-run the full walk-forward analysis every **3–6 months** to:
 - Update the conservative live-trading expectations.
 
 ### How to Re-Run
+
+**Option A — Google Colab (recommended for full honest validation):**
+
+Open [v5_honest_validation.py](v5_honest_validation.py) in Google Colab and upload your
+updated CSV when prompted — or run it locally:
+
+```bash
+python v5_honest_validation.py --csv path/to/updated_data.csv
+```
+
+The script runs all 7 sections automatically in ~2–4 minutes and produces a scored
+GO / CAUTION / NO-GO recommendation.
+
+**Option B — Local CLI (quick validation using `advanced_validation` module):**
 
 ```bash
 # Run full validation suite (requires data.csv updated with recent bars)
