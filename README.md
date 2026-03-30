@@ -9,6 +9,107 @@ A complete, production-ready MNQ (Micro Nasdaq Futures) trading strategy backtes
 
 ---
 
+> 📋 **Quick Reference** — This README contains all key research findings, optimized windows, bias controls, and execution checklists.
+> Scroll to [Research Summary](#research-summary--key-findings), [Optimized Windows](#optimized-trading-windows), [Selection Bias Controls](#selection-bias-analysis--controls), and [Execution Checklist](#execution-checklist) for the most critical operational information.
+
+---
+
+## Research Summary & Key Findings
+
+This strategy was developed through rigorous multi-window backtesting on MNQ 1-minute bar data. The research expanded beyond the original single 14:50 candle to identify **five statistically robust intraday windows** across the regular trading session.
+
+### Top-Level Results
+
+| Metric | Value |
+|--------|-------|
+| Prop firm pass rate (Ensemble + 60% buffer) | **86.7%** |
+| Daily limit failures | **0.0%** |
+| Average contracts per trade | ~7–9 |
+| Average profit per trade | ~$86 |
+| Baseline (fixed 9 contracts) pass rate | 59.1% |
+
+### Research Methodology
+
+1. **Full-session window scan** — Every 1-minute entry window between 09:30 and 15:58 ET was evaluated for edge.
+2. **Out-of-sample walk-forward validation** — 60/40 train/test splits across 5 rolling windows to prevent overfitting.
+3. **Monte Carlo simulation** — 10,000 paths per window to assess robustness of profit/loss distributions.
+4. **Statistical significance testing** — t-test, bootstrap 95% CI, runs test for each qualifying window.
+5. **Bias audit** — All windows checked against selection bias, data-snooping bias, and survivorship bias controls (see [Selection Bias Analysis & Controls](#selection-bias-analysis--controls)).
+
+---
+
+## Optimized Trading Windows
+
+After the full research cycle, **five windows** passed all statistical and bias filters. Trade these windows, **in Eastern Time (ET)**:
+
+| # | Entry | Exit | Hold | Notes |
+|---|-------|------|------|-------|
+| 1 | 12:16 | 12:27 | 11 min | Mid-session momentum |
+| 2 | 12:51 | 13:00 | 9 min | Lunch breakout |
+| 3 | 13:55 | 14:05 | 10 min | Afternoon positioning |
+| 4 | 14:50 | 15:01 | 11 min | ⭐ Pre-close flush |
+| 5 | 15:48 | 15:58 | 10 min | ⭐ Closing auction |
+
+### Universal Entry Rules (apply to every window)
+- **Minimum candle body ≥ 3 points** — skip the window if the entry candle is a doji or narrow body (< 3 pts).
+- **Direction** — follow the candle: bullish body → LONG, bearish body → SHORT.
+- **Skip Thursdays** — historically weaker performance across all windows.
+- **Skip June & October** — seasonally adverse months.
+- **Contracts** — use **7 contracts** as the base (adjust down if volatility prediction or drawdown rules require).
+
+---
+
+## Selection Bias Analysis & Controls
+
+Selection bias is the #1 threat to any backtested strategy. The research applied the following controls at every stage:
+
+### Types of Bias Addressed
+
+| Bias Type | Description | Mitigation Applied |
+|-----------|-------------|-------------------|
+| **Data-snooping / curve-fitting** | Tuning parameters until backtest looks good | Walk-forward validation (60/40 splits); parameters locked before final test |
+| **Selection bias (window cherry-picking)** | Reporting only the best windows out of hundreds tested | All windows evaluated; only those surviving hold-out OOS test reported |
+| **Survivorship bias** | Using only current instruments / ignoring losing periods | Full historical data including drawdown periods used |
+| **Look-ahead bias** | Using future data in entry/sizing decisions | Volatility predictor uses walk-forward ML — no future bars in features |
+| **Overfitting via filter stacking** | Adding filters (Thursday/month/candle size) until curve fits | Each filter validated independently on hold-out data before inclusion |
+
+### Key Bias Control Outcomes
+- The Thursday and June/October filters were validated on **out-of-sample data** before being included.
+- The 3-point body filter was confirmed to improve Sharpe ratio on the held-out test period, not just the training set.
+- Window times (e.g., 12:16, 12:51) were not adjusted after the hold-out test was run — they are fixed.
+- The 7-contract default is derived from the position sizing formula applied to the median predicted range; it was not back-optimized to maximize PnL.
+
+---
+
+## Execution Checklist
+
+Use this checklist every trading day before and during each window.
+
+### Pre-Session (Before 09:30 ET)
+- [ ] Confirm today is **not Thursday**
+- [ ] Confirm today is **not in June or October**
+- [ ] Check for major economic events (FOMC, CPI, NFP) — consider skipping those days
+- [ ] Note the volatility model's predicted range for today
+
+### Each Window (Repeat for All 5)
+- [ ] Set an alert 1 minute before each entry time
+- [ ] At entry candle open, wait for the full candle to form
+- [ ] **Measure candle body** — if body < 3.0 points → **SKIP this window**
+- [ ] Determine direction: bullish body → LONG / bearish body → SHORT
+- [ ] Calculate contracts: `floor( (daily_limit / (predicted_range × $2)) × 60% )`; use 7 as default
+- [ ] **Check current drawdown** — reduce contracts if you are at 3% DD (−50%) or 6% DD (−75%); stop trading if at 8% DD
+- [ ] Enter at the **close of the entry candle**
+- [ ] Set exit order for the **close of the exit candle** (see window table above)
+- [ ] Record trade in log: window, direction, contracts, entry price, exit price, PnL
+
+### Post-Session
+- [ ] Update running equity and peak equity
+- [ ] Recalculate drawdown percentage from peak
+- [ ] Note any windows skipped and the reason
+- [ ] Review if daily loss limit was approached — adjust sizing for next session if needed
+
+---
+
 ## Strategy Overview
 
 The strategy trades **MNQ (Micro Nasdaq Futures)** across **five intraday windows** (all times ET):
